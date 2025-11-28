@@ -77,11 +77,16 @@ class TechFixApp(tk.Tk):
         # Make the root window expandable
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
-        
-        # Start in fullscreen mode
-        self.attributes('-fullscreen', True)
-        
-        # Bind F11 key to toggle fullscreen
+        # Start in a large centered window (easier for modern UI)
+        self.update_idletasks()
+        width, height = 1200, 800
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
+        # Bind F11 to toggle fullscreen (still available)
         self.bind('<F11>', lambda e: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
         self.bind('<Escape>', lambda e: self.attributes('-fullscreen', False))
         
@@ -179,6 +184,49 @@ class TechFixApp(tk.Tk):
             font=FONT_BOLD,
         )
 
+        # Monkeypatch ttk.Label to inherit visible bg/fg from parent when not explicitly provided.
+        # This reduces text 'halo' artifacts on colored backgrounds by ensuring labels draw with
+        # a matching background color and a contrasting foreground.
+        try:
+            _orig_ttk_label_init = ttk.Label.__init__
+
+            def _contrast_color(hexcolor: str) -> str:
+                try:
+                    h = hexcolor.lstrip('#')
+                    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                    # relative luminance
+                    lum = (0.2126 * (r/255.0) + 0.7152 * (g/255.0) + 0.0722 * (b/255.0))
+                    return '#ffffff' if lum < 0.55 else colors.get('text_primary', '#000000')
+                except Exception:
+                    return colors.get('text_primary', '#000000')
+
+            def _patched_label_init(self, master=None, *args, **kwargs):
+                try:
+                    # If background not given, attempt to inherit parent's bg
+                    if ('background' not in kwargs) and ('bg' not in kwargs):
+                        if master is not None:
+                            try:
+                                parent_bg = master.cget('bg')
+                                if parent_bg:
+                                    kwargs['background'] = parent_bg
+                            except Exception:
+                                pass
+
+                    # If foreground not given, pick a contrasting color based on background
+                    if 'foreground' not in kwargs and 'fg' not in kwargs:
+                        bg = kwargs.get('background') or (master.cget('bg') if master is not None else None)
+                        if isinstance(bg, str) and bg.startswith('#'):
+                            kwargs['foreground'] = _contrast_color(bg)
+                        else:
+                            kwargs['foreground'] = colors.get('text_primary', '#000000')
+                except Exception:
+                    pass
+                return _orig_ttk_label_init(self, master, *args, **kwargs)
+
+            ttk.Label.__init__ = _patched_label_init
+        except Exception:
+            pass
+
         self.style.configure(
             "Techfix.TNotebook",
             background=colors["app_bg"],
@@ -210,13 +258,43 @@ class TechFixApp(tk.Tk):
             foreground="#ffffff",
             padding=(16, 8),
             borderwidth=0,
-            focusthickness=3,
-            focuscolor=colors["accent_color"],
+            # remove focus thickness/color to avoid drawing focus outlines that look like shadows
         )
         self.style.map(
             "Techfix.TButton",
             background=[("active", colors["accent_hover"]), ("disabled", colors["accent_disabled"])],
             foreground=[("disabled", "#ffffff")],
+        )
+
+        # Navigation / Sidebar button style
+        self.style.configure(
+            "Techfix.Nav.TButton",
+            background=colors["surface_bg"],
+            foreground=colors["text_primary"],
+            padding=(12, 10),
+            anchor="w",
+            font=FONT_BASE,
+            relief="flat",
+        )
+        self.style.map(
+            "Techfix.Nav.TButton",
+            background=[("active", colors.get("tab_active_bg")), ("selected", colors.get("tab_selected_bg"))],
+            foreground=[("active", colors.get("text_primary"))],
+        )
+        # Selected variant: accent background with white foreground
+        self.style.configure(
+            "Techfix.Nav.Selected.TButton",
+            background=colors["accent_color"],
+            foreground="#ffffff",
+            padding=(12, 10),
+            anchor="w",
+            font=FONT_BASE,
+            relief="flat",
+        )
+        self.style.map(
+            "Techfix.Nav.Selected.TButton",
+            background=[("active", colors.get("accent_hover"))],
+            foreground=[("active", "#ffffff")],
         )
 
         self.style.configure(
@@ -543,17 +621,30 @@ class TechFixApp(tk.Tk):
         container = ttk.Frame(self.main_frame, style="Techfix.App.TFrame")
         container.pack(fill=tk.BOTH, expand=True)
 
-        header = tk.Frame(container, bg=self.palette["accent_color"])
-        header.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 8))
+        # Sidebar (left) + content (right) layout for modern look
+        sidebar = ttk.Frame(container, style="Techfix.Surface.TFrame", width=220)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(12, 6), pady=12)
+        sidebar.pack_propagate(False)
+
+        right_wrap = ttk.Frame(container, style="Techfix.App.TFrame")
+        right_wrap.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 12), pady=12)
+
+        # Header goes in right content area
+        header = tk.Frame(right_wrap, bg=self.palette["accent_color"])
+        header.pack(fill=tk.X, padx=0, pady=(0, 8))
         self.header_frame = header
-        ttk.Label(header, text="TechFix Solutions", style="Techfix.Headline.TLabel").pack(side=tk.LEFT, padx=18, pady=12)
-        ttk.Label(
+        # Use tk.Label with explicit bg to avoid OS/text rendering halos
+        tk.Label(header, text="TechFix Solutions", bg=self.palette["accent_color"], fg="#ffffff", font="{Segoe UI Semibold} 14").pack(side=tk.LEFT, padx=18, pady=12)
+        tk.Label(
             header,
             text="Integrated accounting workspace",
-            style="Techfix.Subtitle.TLabel",
+            bg=self.palette["accent_color"],
+            fg=self.palette.get("subtitle_fg", "#dbeafe"),
+            font=FONT_BASE,
         ).pack(side=tk.LEFT, padx=12, pady=12)
-        toolbar = ttk.Frame(container, style="Techfix.App.TFrame")
-        toolbar.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
+
+        toolbar = ttk.Frame(right_wrap, style="Techfix.App.TFrame")
+        toolbar.pack(fill=tk.X, padx=12, pady=(0, 12))
         self.toolbar_frame = toolbar
 
         ttk.Label(toolbar, text="Period", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 6))
@@ -604,15 +695,14 @@ class TechFixApp(tk.Tk):
         )
         self.dark_btn.pack(side=tk.LEFT)
 
-        cycle_frame = ttk.Labelframe(container, text="Accounting Cycle Status", style="Techfix.TLabelframe")
-        cycle_frame.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
+        cycle_frame = ttk.Labelframe(right_wrap, text="Accounting Cycle Status", style="Techfix.TLabelframe")
+        cycle_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
         self.cycle_frame = cycle_frame
 
         cycle_top = ttk.Frame(cycle_frame, style="Techfix.Surface.TFrame")
         cycle_top.pack(fill=tk.X, padx=4, pady=(4, 0))
-        ttk.Label(cycle_top, text="Track progress through the 10-step cycle.", style="Techfix.AppBar.TLabel").pack(
-            side=tk.LEFT
-        )
+        # Use explicit background to match surface frame and avoid rendering artifacts
+        tk.Label(cycle_top, text="Track progress through the 10-step cycle.", bg=self.palette.get('surface_bg'), fg=self.palette.get('text_secondary'), font=FONT_BASE).pack(side=tk.LEFT)
 
         actions = ttk.Frame(cycle_frame, style="Techfix.Surface.TFrame")
         actions.pack(fill=tk.X, padx=4, pady=(4, 4))
@@ -659,34 +749,22 @@ class TechFixApp(tk.Tk):
 
     
 
-        notebook_wrap = ttk.Frame(container, style="Techfix.App.TFrame")
-        notebook_wrap.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        container.grid_rowconfigure(3, weight=1)
-        container.grid_columnconfigure(0, weight=1)
+        notebook_wrap = ttk.Frame(right_wrap, style="Techfix.App.TFrame")
+        notebook_wrap.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
 
-        # Create notebook as an instance variable
-        self.notebook = ttk.Notebook(notebook_wrap, style="Techfix.TNotebook")
-        self.notebook.pack(fill=tk.BOTH, expand=True)
+        # Create a single content area and individual tab frames (we'll show/hide them)
+        self.content_area = ttk.Frame(notebook_wrap, style="Techfix.App.TFrame")
+        self.content_area.pack(fill=tk.BOTH, expand=True)
 
-        self.tab_txn = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_journal = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_ledger = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_trial = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_adjust = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_fs = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_closing = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_postclosing = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-        self.tab_export = ttk.Frame(self.notebook, style="Techfix.Surface.TFrame")
-
-        self.notebook.add(self.tab_txn, text="Transactions")
-        self.notebook.add(self.tab_journal, text="Journal")
-        self.notebook.add(self.tab_ledger, text="Ledger")
-        self.notebook.add(self.tab_trial, text="Trial Balance")
-        self.notebook.add(self.tab_adjust, text="Adjustments")
-        self.notebook.add(self.tab_fs, text="Financial Statements")
-        self.notebook.add(self.tab_closing, text="Closing Entries")
-        self.notebook.add(self.tab_postclosing, text="Post-Closing TB")
-        self.notebook.add(self.tab_export, text="Export")
+        self.tab_txn = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_journal = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_ledger = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_trial = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_adjust = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_fs = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_closing = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_postclosing = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_export = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
 
         self._build_transactions_tab()
         self._build_journal_tab()
@@ -697,6 +775,85 @@ class TechFixApp(tk.Tk):
         self._build_closing_tab()
         self._build_postclosing_tab()
         self._build_export_tab()
+
+        # Build simple sidebar navigation (shows/hides content frames)
+        # Add a profile/header area inside the sidebar
+        profile = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
+        profile.pack(fill=tk.X, pady=(6, 12), padx=6)
+        avatar = tk.Canvas(profile, width=44, height=44, highlightthickness=0, bg=self.palette["surface_bg"])
+        avatar.create_oval(2, 2, 42, 42, fill=self.palette["accent_color"], outline="")
+        avatar.create_text(22, 22, text="TF", fill="#ffffff", font="{Segoe UI Semibold} 10")
+        avatar.pack(side=tk.LEFT)
+        ttk.Label(profile, text="TechFix", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(8, 0))
+
+        # Factory to create sidebar nav rows (indicator + button)
+        def make_nav(text: str, index: int, emoji: str = ""):
+            if not hasattr(self, '_nav_buttons'):
+                self._nav_buttons = []
+
+            row = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
+            row.pack(fill=tk.X, pady=4, padx=6)
+
+            # Left accent indicator (thin bar)
+            indicator = tk.Frame(row, width=6, bg=self.palette["surface_bg"])
+            indicator.pack(side=tk.LEFT, fill=tk.Y)
+
+            # Button expands to fill remaining space
+            btn = ttk.Button(row, text=f"{emoji}  {text}", style="Techfix.Nav.TButton", command=lambda i=index: self._nav_to(i))
+            btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            # Hover effects: change indicator on enter/leave when not selected
+            def on_enter(e, ind=indicator):
+                try:
+                    ind.configure(bg=self.palette.get('tab_active_bg'))
+                except Exception:
+                    pass
+
+            def on_leave(e, ind=indicator, b=btn, idx=index):
+                try:
+                    # keep selected indicator if currently selected
+                    if getattr(self, '_current_nav_index', None) == idx:
+                        ind.configure(bg=self.palette.get('accent_color'))
+                    else:
+                        ind.configure(bg=self.palette.get('surface_bg'))
+                except Exception:
+                    pass
+
+            btn.bind('<Enter>', on_enter)
+            btn.bind('<Leave>', on_leave)
+
+            self._nav_buttons.append((indicator, btn))
+            return (indicator, btn)
+
+        # Add navigation buttons (icons via emoji for simplicity)
+        make_nav("Transactions", 0, "🧾")
+        make_nav("Journal", 1, "📓")
+        make_nav("Ledger", 2, "📚")
+        make_nav("Trial Balance", 3, "🧮")
+        make_nav("Adjustments", 4, "⚙️")
+        make_nav("Fin. Statements", 5, "📊")
+        make_nav("Closing", 6, "🔒")
+        make_nav("Post-Closing", 7, "📈")
+        make_nav("Export", 8, "⬇️")
+
+        # Keep an ordered list of the content frames to show/hide
+        self._tab_frames = [
+            self.tab_txn,
+            self.tab_journal,
+            self.tab_ledger,
+            self.tab_trial,
+            self.tab_adjust,
+            self.tab_fs,
+            self.tab_closing,
+            self.tab_postclosing,
+            self.tab_export,
+        ]
+
+        # Initially show the first frame
+        try:
+            self._nav_to(0)
+        except Exception:
+            pass
 
     def _update_cycle_step_status(self, status: str) -> None:
         try:
@@ -717,6 +874,55 @@ class TechFixApp(tk.Tk):
             self._load_cycle_status()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update cycle step: {e}")
+
+    def _nav_to(self, index: int) -> None:
+        """Navigate to notebook tab by index if possible."""
+        try:
+            # Hide all frames
+            if not hasattr(self, '_tab_frames'):
+                return
+            for f in getattr(self, '_tab_frames'):
+                try:
+                    f.pack_forget()
+                except Exception:
+                    pass
+
+            # Bound index
+            if index < 0:
+                index = 0
+            if index >= len(self._tab_frames):
+                index = 0
+
+            # Show selected frame
+            sel = self._tab_frames[index]
+            sel.pack(fill=tk.BOTH, expand=True)
+
+            # Update nav button visuals (indicator and selected style)
+            try:
+                self._current_nav_index = index
+                for idx, (ind, btn) in enumerate(getattr(self, '_nav_buttons', ())):
+                    if idx == index:
+                        try:
+                            ind.configure(bg=self.palette.get('accent_color'))
+                        except Exception:
+                            pass
+                        try:
+                            btn.configure(style='Techfix.Nav.Selected.TButton')
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            ind.configure(bg=self.palette.get('surface_bg'))
+                        except Exception:
+                            pass
+                        try:
+                            btn.configure(style='Techfix.Nav.TButton')
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _post_to_ledger_action(self) -> None:
         try:
@@ -1123,8 +1329,8 @@ class TechFixApp(tk.Tk):
             height=3,
             bg=self.palette["surface_bg"],
             fg=self.palette["text_primary"],
-            highlightthickness=1,
-            highlightbackground=self.palette["entry_border"],
+            highlightthickness=0,
+            highlightbackground=self.palette.get("surface_bg", "#ffffff"),
             relief=tk.FLAT,
             wrap=tk.WORD,
             font=("Segoe UI", 9),
@@ -2649,8 +2855,8 @@ class TechFixApp(tk.Tk):
             fg=self.palette["text_primary"],
             font=FONT_MONO,
             bd=0,
-            highlightthickness=1,
-            highlightbackground=self.palette["entry_border"],
+            highlightthickness=0,
+            highlightbackground=self.palette.get("surface_bg", "#ffffff"),
             relief=tk.FLAT,
         )
         self.close_log.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
