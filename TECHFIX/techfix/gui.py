@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
+import tkinter.font as tkfont
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -137,24 +138,40 @@ class TechFixApp(tk.Tk):
     def _apply_theme(self, name: str, *, initial: bool = False) -> None:
         if name not in THEMES or name == self.theme_name:
             return
-            
-        self.theme_name = name
-        self.palette = THEMES[name]
-        self._configure_style()
-        
-        # Update theme toggle button styles
-        if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
-            self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
-            self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
-            
-        # Always update theme widgets when theme changes
-        self._update_theme_widgets()
-        try:
-            self.set_status(f"Theme: {name}")
-            if not initial:
+
+        if initial:
+            self.theme_name = name
+            self.palette = THEMES[name]
+            self._configure_style()
+            if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
+                self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
+                self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
+            self._update_theme_widgets()
+            try:
+                self.set_status(f"Theme: {name}")
                 self._save_window_settings()
+            except Exception:
+                pass
+            return
+
+        try:
+            if getattr(self, '_theme_animating', False):
+                return
+            self._animate_theme_switch(name)
         except Exception:
-            pass
+            # Fallback to immediate apply if animation fails
+            self.theme_name = name
+            self.palette = THEMES[name]
+            self._configure_style()
+            if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
+                self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
+                self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
+            self._update_theme_widgets()
+            try:
+                self.set_status(f"Theme: {name}")
+                self._save_window_settings()
+            except Exception:
+                pass
 
     def _configure_style(self) -> None:
         colors = self.palette
@@ -162,6 +179,19 @@ class TechFixApp(tk.Tk):
         self.configure(bg=colors["app_bg"])
         self.option_add("*Font", FONT_BASE)
         self.option_add("*TCombobox*Listbox.font", FONT_BASE)
+        # Ensure dropdown popups (Combobox listbox) and menus are readable in both themes
+        try:
+            self.option_add("*TCombobox*Listbox.background", colors.get("surface_bg", "#ffffff"))
+            self.option_add("*TCombobox*Listbox.foreground", colors.get("text_primary", "#000000"))
+            self.option_add("*TCombobox*Listbox.selectBackground", colors.get("accent_color", "#2563eb"))
+            self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+            self.option_add("*Menu.background", colors.get("surface_bg", "#ffffff"))
+            self.option_add("*Menu.foreground", colors.get("text_primary", "#000000"))
+            self.option_add("*Menu.activeBackground", colors.get("accent_color", "#2563eb"))
+            self.option_add("*Menu.activeForeground", "#ffffff")
+            self.option_add("*Menu.relief", "flat")
+        except Exception:
+            pass
 
         try:
             self.style.theme_use("clam")
@@ -184,6 +214,28 @@ class TechFixApp(tk.Tk):
             background=colors["accent_color"],
             foreground=colors["subtitle_fg"],
             font=FONT_BASE,
+        )
+        try:
+            tkfont.Font(name="TechfixBrandFont", family="Arial Black", size=17)
+        except Exception:
+            try:
+                tkfont.Font(name="TechfixBrandFont", family="Arial", size=17, weight="bold")
+            except Exception:
+                try:
+                    tkfont.Font(name="TechfixBrandFont", family="Segoe UI", size=17, weight="bold")
+                except Exception:
+                    pass
+        self.style.configure(
+            "Techfix.SidebarBrand.TLabel",
+            background=colors["surface_bg"],
+            foreground=colors["accent_color"],
+            font="TechfixBrandFont",
+        )
+        self.style.configure(
+            "Techfix.Brand.TLabel",
+            background=colors["app_bg"],
+            foreground=colors["accent_color"],
+            font="{Segoe UI Semibold} 16",
         )
 
         self.style.configure(
@@ -397,6 +449,19 @@ class TechFixApp(tk.Tk):
             font=FONT_BASE,
         )
 
+        self.style.configure(
+            "Techfix.Danger.TButton",
+            background="#dc2626",
+            foreground="#ffffff",
+            padding=(16, 8),
+            borderwidth=0,
+        )
+        self.style.map(
+            "Techfix.Danger.TButton",
+            background=[("active", "#b91c1c"), ("disabled", "#ef4444")],
+            foreground=[("disabled", "#ffffff")],
+        )
+
     def _update_theme_widgets(self) -> None:
         """Apply current palette colors to widgets that need manual updates."""
         try:
@@ -455,6 +520,14 @@ class TechFixApp(tk.Tk):
             except Exception:
                 pass
 
+            # Refresh sidebar brand canvas to match theme
+            try:
+                if hasattr(self, 'sidebar_brand_canvas'):
+                    self.sidebar_brand_canvas.configure(bg=colors.get('surface_bg', '#ffffff'))
+                    self._draw_sidebar_brand()
+            except Exception:
+                pass
+
             # If financial statements already have content, re-generate them
             # so tag colors and formatting are applied for the new theme.
             try:
@@ -490,8 +563,181 @@ class TechFixApp(tk.Tk):
             except Exception:
                 pass
 
+            # Update sidebar indicators and button styles to match theme
+            try:
+                if hasattr(self, '_nav_buttons'):
+                    cur = getattr(self, '_current_nav_index', None)
+                    for idx, (ind, btn) in enumerate(self._nav_buttons):
+                        try:
+                            ind.configure(bg=(colors.get('accent_color') if cur == idx else colors.get('surface_bg')),
+                                          highlightthickness=0, bd=0, relief=tk.FLAT)
+                        except Exception:
+                            pass
+                        try:
+                            btn.configure(style=('Techfix.Nav.Selected.TButton' if cur == idx else 'Techfix.Nav.TButton'))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            try:
+                self._style_all_combobox_popdowns()
+            except Exception:
+                pass
+            try:
+                self._style_menus()
+            except Exception:
+                pass
+
         except Exception:
             # Don't let theme update errors break app initialization
+            pass
+
+    def _draw_sidebar_brand(self) -> None:
+        try:
+            if not hasattr(self, 'sidebar_brand_canvas'):
+                return
+            c = self.sidebar_brand_canvas
+            colors = self.palette
+            c.delete('all')
+            w = c.winfo_width() or c.winfo_reqwidth()
+            h = c.winfo_height() or 30
+            text = 'Techfix'
+            accent = colors.get('accent_color', '#2563eb')
+            # Letter spacing rendering: draw per-character with small gaps and multi-offset for thickness
+            try:
+                fnt = tkfont.nametofont('TechfixBrandFont')
+            except Exception:
+                fnt = None
+            spacing = 3
+            try:
+                widths = [int(fnt.measure(ch)) for ch in text] if fnt else [12 for _ in text]
+            except Exception:
+                widths = [12 for _ in text]
+            total = sum(widths) + spacing * max(0, len(text) - 1)
+            start_x = int((w - total) / 2)
+            y = int(h / 2)
+            offsets = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(1,-1),(-1,1),(1,1)]
+            x = start_x
+            for i, ch in enumerate(text):
+                # Draw outlines for thickness
+                for dx, dy in offsets:
+                    try:
+                        c.create_text(x + dx, y + dy, text=ch, fill=accent, font='TechfixBrandFont', anchor='w')
+                    except Exception:
+                        pass
+                # Draw the main glyph
+                c.create_text(x, y, text=ch, fill=accent, font='TechfixBrandFont', anchor='w')
+                x += widths[i] + spacing
+        except Exception:
+            pass
+
+    def _animate_theme_switch(self, name: str, *, duration_ms: int = 300) -> None:
+        try:
+            self._theme_animating = True
+            self.update_idletasks()
+            w = max(1, self.winfo_width() or 1200)
+            h = max(1, self.winfo_height() or 800)
+
+            new_palette = THEMES[name]
+            overlay = tk.Canvas(self, highlightthickness=0, bd=0, bg=self.palette.get('app_bg', '#ffffff'))
+            overlay.place(x=0, y=0, width=w, height=h)
+            try:
+                overlay.lift()
+            except Exception:
+                pass
+
+            steps = max(10, int(duration_ms / 15))
+            dy = h / float(steps)
+            if name == "Dark":
+                rect = overlay.create_rectangle(0, 0, w, 1, fill=new_palette.get('surface_bg', '#ffffff'), outline="")
+                def coords_for_step(i):
+                    return (0, 0, w, int(min(h, i * dy)))
+            else:
+                rect = overlay.create_rectangle(0, h-1, w, h, fill=new_palette.get('surface_bg', '#ffffff'), outline="")
+                def coords_for_step(i):
+                    y1 = int(max(0, h - i * dy))
+                    return (0, y1, w, h)
+            i = 0
+
+            def sweep():
+                nonlocal i
+                i += 1
+                overlay.coords(rect, *coords_for_step(i))
+                if i < steps:
+                    self.after(15, sweep)
+                else:
+                    try:
+                        self.theme_name = name
+                        self.palette = new_palette
+                        self._configure_style()
+                        if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
+                            self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
+                            self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
+                        self._update_theme_widgets()
+                        self.set_status(f"Theme: {name}")
+                        self._save_window_settings()
+                    except Exception:
+                        pass
+                    try:
+                        overlay.place_forget()
+                        overlay.destroy()
+                    except Exception:
+                        pass
+                    self._theme_animating = False
+
+            sweep()
+        except Exception:
+            self._theme_animating = False
+
+    def _style_combobox_popdown(self, cb: ttk.Combobox) -> None:
+        try:
+            colors = self.palette
+            pop = cb.tk.call('ttk::combobox::PopdownWindow', cb)
+            lb = self.nametowidget(f'{pop}.f.l')
+            lb.configure(
+                background=colors.get('surface_bg', '#ffffff'),
+                foreground=colors.get('text_primary', '#000000'),
+                selectbackground=colors.get('accent_color', '#2563eb'),
+                selectforeground='#ffffff',
+                highlightthickness=0,
+                borderwidth=0,
+            )
+        except Exception:
+            pass
+
+    def _style_all_combobox_popdowns(self) -> None:
+        try:
+            for name in dir(self):
+                try:
+                    w = getattr(self, name)
+                except Exception:
+                    continue
+                if isinstance(w, ttk.Combobox):
+                    try:
+                        self._style_combobox_popdown(w)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _style_menus(self) -> None:
+        try:
+            colors = self.palette
+            for m in (getattr(self, 'menubar', None), getattr(self, 'file_menu', None), getattr(self, 'view_menu', None), getattr(self, 'help_menu', None)):
+                if m is None:
+                    continue
+                try:
+                    m.configure(
+                        bg=colors.get('surface_bg', '#ffffff'),
+                        fg=colors.get('text_primary', '#000000'),
+                        activebackground=colors.get('accent_color', '#2563eb'),
+                        activeforeground='#ffffff',
+                        tearoff=False,
+                    )
+                except Exception:
+                    pass
+        except Exception:
             pass
 
     def _on_window_resize(self, event=None):
@@ -1008,18 +1254,11 @@ class TechFixApp(tk.Tk):
         right_wrap.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 12), pady=12)
 
         # Header goes in right content area
-        header = tk.Frame(right_wrap, bg=self.palette["accent_color"])
+        header = tk.Frame(right_wrap, bg=self.palette["accent_color"]) 
         header.pack(fill=tk.X, padx=0, pady=(0, 8))
         self.header_frame = header
-        # Use tk.Label with explicit bg to avoid OS/text rendering halos
         tk.Label(header, text="TechFix Solutions", bg=self.palette["accent_color"], fg="#ffffff", font="{Segoe UI Semibold} 14").pack(side=tk.LEFT, padx=18, pady=12)
-        tk.Label(
-            header,
-            text="Integrated accounting workspace",
-            bg=self.palette["accent_color"],
-            fg=self.palette.get("subtitle_fg", "#dbeafe"),
-            font=FONT_BASE,
-        ).pack(side=tk.LEFT, padx=12, pady=12)
+        tk.Label(header, text="Integrated accounting workspace", bg=self.palette["accent_color"], fg=self.palette.get("subtitle_fg", "#dbeafe"), font=FONT_BASE).pack(side=tk.LEFT, padx=12, pady=12)
 
         toolbar = ttk.Frame(right_wrap, style="Techfix.App.TFrame")
         toolbar.pack(fill=tk.X, padx=12, pady=(0, 12))
@@ -1116,7 +1355,7 @@ class TechFixApp(tk.Tk):
             show="headings",
             style="Techfix.Treeview",
             selectmode="browse",
-            height=10,
+            height=6,
         )
         self.cycle_tree_scroll = ttk.Scrollbar(cycle_frame, orient=tk.VERTICAL, command=self.cycle_tree.yview)
         self.cycle_tree.configure(yscrollcommand=self.cycle_tree_scroll.set)
@@ -1162,11 +1401,16 @@ class TechFixApp(tk.Tk):
         # Add a profile/header area inside the sidebar
         profile = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
         profile.pack(fill=tk.X, pady=(6, 12), padx=6)
-        avatar = tk.Canvas(profile, width=44, height=44, highlightthickness=0, bg=self.palette["surface_bg"])
-        avatar.create_oval(2, 2, 42, 42, fill=self.palette["accent_color"], outline="")
-        avatar.create_text(22, 22, text="TF", fill="#ffffff", font="{Segoe UI Semibold} 10")
-        avatar.pack(side=tk.LEFT)
-        ttk.Label(profile, text="TechFix", style="Techfix.TLabel").pack(side=tk.LEFT, padx=(8, 0))
+        self.sidebar_brand_canvas = tk.Canvas(profile, height=30, highlightthickness=0, bd=0, bg=self.palette.get('surface_bg'))
+        self.sidebar_brand_canvas.pack(fill=tk.X, padx=6, pady=6)
+        try:
+            self.sidebar_brand_canvas.bind('<Configure>', lambda e: self._draw_sidebar_brand())
+        except Exception:
+            pass
+        try:
+            self._draw_sidebar_brand()
+        except Exception:
+            pass
 
         # Factory to create sidebar nav rows (indicator + button)
         def make_nav(text: str, index: int, emoji: str = ""):
@@ -1177,7 +1421,7 @@ class TechFixApp(tk.Tk):
             row.pack(fill=tk.X, pady=4, padx=6)
 
             # Left accent indicator (thin bar)
-            indicator = tk.Frame(row, width=6, bg=self.palette["surface_bg"])
+            indicator = tk.Frame(row, width=6, bg=self.palette["surface_bg"], highlightthickness=0, bd=0, relief=tk.FLAT)
             indicator.pack(side=tk.LEFT, fill=tk.Y)
 
             # Button expands to fill remaining space
@@ -1231,24 +1475,29 @@ class TechFixApp(tk.Tk):
             self.tab_export,
         ]
 
+        exit_wrap = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
+        exit_wrap.pack(side=tk.BOTTOM, fill=tk.X, padx=6, pady=(12, 6))
+        ttk.Button(exit_wrap, text="Exit", command=self._on_close, style="Techfix.Danger.TButton").pack(fill=tk.X)
+
     def _build_menubar(self) -> None:
-        m = tk.Menu(self)
-        file_menu = tk.Menu(m, tearoff=0)
-        file_menu.add_command(label="Exit", command=self._on_close)
-        m.add_cascade(label="File", menu=file_menu)
+        self.menubar = tk.Menu(self)
+        self.file_menu = tk.Menu(self.menubar, tearoff=0)
+        self.file_menu.add_command(label="Exit", command=self._on_close)
+        self.menubar.add_cascade(label="File", menu=self.file_menu)
 
-        view_menu = tk.Menu(m, tearoff=0)
-        view_menu.add_command(label="Light Theme", command=lambda: self._apply_theme("Light"))
-        view_menu.add_command(label="Dark Theme", command=lambda: self._apply_theme("Dark"))
-        view_menu.add_separator()
-        view_menu.add_command(label="Toggle Fullscreen", command=lambda: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
-        m.add_cascade(label="View", menu=view_menu)
+        self.view_menu = tk.Menu(self.menubar, tearoff=0)
+        self.view_menu.add_command(label="Light Theme", command=lambda: self._apply_theme("Light"))
+        self.view_menu.add_command(label="Dark Theme", command=lambda: self._apply_theme("Dark"))
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Toggle Fullscreen", command=lambda: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
+        self.menubar.add_cascade(label="View", menu=self.view_menu)
 
-        help_menu = tk.Menu(m, tearoff=0)
-        help_menu.add_command(label="About", command=lambda: messagebox.showinfo("About TechFix", "TechFix Accounting App"))
-        m.add_cascade(label="Help", menu=help_menu)
+        self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.help_menu.add_command(label="About", command=lambda: messagebox.showinfo("About TechFix", "TechFix Accounting App"))
+        self.menubar.add_cascade(label="Help", menu=self.help_menu)
 
-        self.config(menu=m)
+        self.config(menu=self.menubar)
+        self._style_menus()
 
     def _update_cycle_step_status(self, status: str) -> None:
         try:
@@ -1647,11 +1896,12 @@ class TechFixApp(tk.Tk):
         main_container = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         main_container.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
         main_container.columnconfigure(0, weight=1)
-        main_container.rowconfigure(1, weight=1, minsize=280)  # ensure recent list has minimum height
+        main_container.columnconfigure(1, weight=1)
+        main_container.rowconfigure(0, weight=1)
         
         # Form frame with fixed height
         form = ttk.LabelFrame(main_container, text="New Transaction", style="Techfix.TLabelframe")
-        form.grid(row=0, column=0, sticky="nsew", padx=0, pady=(0, 6))
+        form.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=0)
 
         # Column weight strategy: labels (0,2,4) stay compact, inputs (1,3) expand
         form.columnconfigure(0, weight=0)
@@ -1863,10 +2113,13 @@ class TechFixApp(tk.Tk):
             **button_style
         ).pack(side=tk.RIGHT, pady=2)
 
-        # --- Recent Transactions area (fills remaining space) ---
-        tree_frame = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
-        tree_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=(6,0))
-        main_container.rowconfigure(1, weight=1)
+        # --- Recent Transactions area (right pane) ---
+        recent_wrap = ttk.Labelframe(main_container, text="Recent Transactions", style="Techfix.TLabelframe")
+        recent_wrap.grid(row=0, column=1, sticky="nsew")
+        recent_wrap.columnconfigure(0, weight=1)
+        recent_wrap.rowconfigure(0, weight=1)
+        tree_frame = ttk.Frame(recent_wrap, style="Techfix.Surface.TFrame")
+        tree_frame.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
 
         cols = ("date", "reference", "description", "debit", "credit", "account")
         self.txn_recent_tree = ttk.Treeview(
@@ -1918,10 +2171,11 @@ class TechFixApp(tk.Tk):
         content.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         content.grid_rowconfigure(0, weight=1)
         content.grid_columnconfigure(0, weight=1)
+        content.grid_columnconfigure(1, weight=1)
 
         # Common Adjustments section
         f = ttk.Labelframe(content, text="Common Adjustments", style="Techfix.TLabelframe")
-        f.pack(fill=tk.X, padx=2, pady=(2, 0))
+        f.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(2, 0))
 
         # Configure columns - make entry fields expand
         f.columnconfigure(0, weight=0)  # Labels
@@ -1973,7 +2227,7 @@ class TechFixApp(tk.Tk):
         # Adjustment Requests section
         queue = ttk.Labelframe(content, text="Adjustment Requests & Approvals",
                               style="Techfix.TLabelframe")
-        queue.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        queue.grid(row=0, column=1, sticky="nsew", padx=(0, 0), pady=(2, 0))
 
         # Input form frame
         queue_inputs = ttk.Frame(queue, style="Techfix.Surface.TFrame")
@@ -2464,6 +2718,15 @@ class TechFixApp(tk.Tk):
                 eid = r["entry_id"]
                 date = r["date"]
                 desc = r["description"]
+                try:
+                    doc_ref = r["document_ref"] if "document_ref" in r.keys() else None
+                except Exception:
+                    doc_ref = None
+                try:
+                    ext_ref = r["external_ref"] if "external_ref" in r.keys() else None
+                except Exception:
+                    ext_ref = None
+                ref = (str(doc_ref).strip() if doc_ref else "") or (str(ext_ref).strip() if ext_ref else "")
                 acct = r["name"]
                 debit = r["debit"]
                 credit = r["credit"]
@@ -2478,7 +2741,7 @@ class TechFixApp(tk.Tk):
                 iid = f"je-{eid}-line-{r['line_id']}"
                 # Insert a header row (first line for an entry) with the date and description
                 if current_entry != eid:
-                    self.journal_tree.insert('', 'end', iid=iid, values=(date, "", desc, f"{debit:,.2f}" if debit else "", f"{credit:,.2f}" if credit else "", acct))
+                    self.journal_tree.insert('', 'end', iid=iid, values=(date, ref, desc, f"{debit:,.2f}" if debit else "", f"{credit:,.2f}" if credit else "", acct))
                     current_entry = eid
                 else:
                     # Subsequent lines for the same entry should show blanks for date/description
@@ -3762,31 +4025,43 @@ class TechFixApp(tk.Tk):
         ttk.Button(controls, text="Refresh", command=self._load_postclosing_tb, style="Techfix.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(controls, text="Complete Post-Closing TB", command=self._complete_postclosing_tb_action, style="Techfix.TButton").pack(side=tk.LEFT, padx=6)
 
+        # Two-pane layout: left = Post-Closing TB, right = Reversing Schedule
+        content = ttk.Frame(frame, style="Techfix.App.TFrame")
+        content.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        content.grid_columnconfigure(0, weight=1)
+        content.grid_columnconfigure(1, weight=1)
+        content.grid_rowconfigure(0, weight=1)
+
+        # Left pane: Post-Closing Trial Balance
+        tb_wrap = ttk.Labelframe(content, text="Post-Closing Trial Balance", style="Techfix.TLabelframe")
+        tb_wrap.grid(row=0, column=0, sticky="nsew", padx=0)
         cols = ("code", "name", "debit", "credit")
-        self.pctb_tree = ttk.Treeview(frame, columns=cols, show="headings", style="Techfix.Treeview")
+        self.pctb_tree = ttk.Treeview(tb_wrap, columns=cols, show="headings", style="Techfix.Treeview")
         for c in cols:
             self.pctb_tree.heading(c, text=c.title(), anchor="w")
-            self.pctb_tree.column(c, stretch=True, width=150, anchor="w")
-        self.pctb_tree.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+            self.pctb_tree.column(c, stretch=True, width=140, anchor="w")
+        pctb_scroll = ttk.Scrollbar(tb_wrap, orient=tk.VERTICAL, command=self.pctb_tree.yview)
+        self.pctb_tree.configure(yscrollcommand=pctb_scroll.set)
+        self.pctb_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
+        pctb_scroll.pack(side=tk.LEFT, fill=tk.Y, padx=(0,4), pady=4)
 
-        schedule = ttk.Labelframe(frame, text="Reversing Entry Schedule", style="Techfix.TLabelframe")
-        schedule.pack(fill=tk.BOTH, expand=False, padx=12, pady=(0, 12))
-        # Controls row for schedule actions (placed above list for visibility)
-        schedule_controls = ttk.Frame(schedule, style="Techfix.Surface.TFrame")
+        # Right pane: Reversing Schedule
+        sched_wrap = ttk.Labelframe(content, text="Reversing Entry Schedule", style="Techfix.TLabelframe")
+        sched_wrap.grid(row=0, column=1, sticky="nsew", padx=0)
+        schedule_controls = ttk.Frame(sched_wrap, style="Techfix.Surface.TFrame")
         schedule_controls.pack(fill=tk.X, padx=4, pady=(4, 4))
-        ttk.Button(schedule_controls, text="Refresh Schedule", command=self._load_reversing_queue, style="Techfix.TButton").pack(
-            side=tk.LEFT, padx=8
-        )
-        ttk.Button(schedule_controls, text="Complete Reversing Schedule", command=self._complete_reversing_schedule_action, style="Techfix.TButton").pack(
-            side=tk.LEFT, padx=8
-        )
+        ttk.Button(schedule_controls, text="Refresh Schedule", command=self._load_reversing_queue, style="Techfix.TButton").pack(side=tk.LEFT, padx=8)
+        ttk.Button(schedule_controls, text="Complete Reversing Schedule", command=self._complete_reversing_schedule_action, style="Techfix.TButton").pack(side=tk.LEFT, padx=8)
         rcols = ("id", "original_entry", "reverse_on", "reversal_entry", "status")
-        self.reversing_tree = ttk.Treeview(schedule, columns=rcols, show="headings", style="Techfix.Treeview", height=5)
+        self.reversing_tree = ttk.Treeview(sched_wrap, columns=rcols, show="headings", style="Techfix.Treeview")
         for c in rcols:
             width = 80 if c == "id" else 140
             self.reversing_tree.heading(c, text=c.replace("_", " ").title(), anchor="w")
             self.reversing_tree.column(c, width=width, stretch=(c != "status"))
-        self.reversing_tree.pack(fill=tk.X, expand=False, padx=4, pady=4)
+        rev_scroll = ttk.Scrollbar(sched_wrap, orient=tk.VERTICAL, command=self.reversing_tree.yview)
+        self.reversing_tree.configure(yscrollcommand=rev_scroll.set)
+        self.reversing_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
+        rev_scroll.pack(side=tk.LEFT, fill=tk.Y, padx=(0,4), pady=4)
 
     def _load_reversing_queue(self) -> None:
         """Load the reversing entry schedule into the treeview."""
@@ -3826,6 +4101,7 @@ class TechFixApp(tk.Tk):
             ("Export Trial Balance (Excel)", self._export_tb),
             ("Export Financials (Excel)", self._export_fs),
             ("Export All (Excel)", self._export_all_to_excel),
+            ("Export Documentation (PDF)", self._export_program_docs_pdf),
         ]
 
         for idx, (label, command) in enumerate(buttons):
@@ -4099,7 +4375,7 @@ class TechFixApp(tk.Tk):
             # --- Journal sheet ---
             ws_j = wb.active
             ws_j.title = "Journal"
-            journal_rows = db.fetch_journal(self.engine.conn)
+            journal_rows = db.fetch_journal(period_id=self.engine.current_period_id, conn=self.engine.conn)
             j_headers = ["entry_id", "date", "description", "code", "name", "debit", "credit"]
             for cidx, h in enumerate(j_headers, start=1):
                 cell = ws_j.cell(row=1, column=cidx, value=h)
@@ -4140,7 +4416,7 @@ class TechFixApp(tk.Tk):
             for cidx, h in enumerate(l_headers, start=1):
                 cell = ws_l.cell(row=1, column=cidx, value=h)
                 cell.font = Font(bold=True)
-            ledger_rows = db.fetch_ledger(self.engine.conn)
+            ledger_rows = db.fetch_ledger(period_id=self.engine.current_period_id, conn=self.engine.conn)
             for ridx, r in enumerate(ledger_rows, start=2):
                 # r is a sqlite3.Row; access fields by key with safety checks
                 if "account_id" in r.keys():
@@ -4190,7 +4466,7 @@ class TechFixApp(tk.Tk):
             for cidx, h in enumerate(tb_headers, start=1):
                 cell = ws_tb.cell(row=1, column=cidx, value=h)
                 cell.font = Font(bold=True)
-            tb_rows = db.compute_trial_balance(conn=self.engine.conn)
+            tb_rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
             for ridx, r in enumerate(tb_rows, start=2):
                 d, c = self._balance_to_columns(r)
                 ws_tb.cell(row=ridx, column=1, value=r["code"] if "code" in r.keys() else "")
@@ -4248,6 +4524,174 @@ class TechFixApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export all data: {str(e)}")
             raise
+
+    def _export_program_docs_pdf(self) -> None:
+        """Generate a PDF with program documentation (overview, usage, modules)."""
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF", "*.pdf")],
+            initialfile=f"techfix_documentation_{__import__('datetime').date.today().isoformat()}.pdf",
+        )
+        if not path:
+            return
+        try:
+            try:
+                from reportlab.lib.pagesizes import letter
+                from reportlab.lib.units import inch
+                from reportlab.pdfgen import canvas
+            except ImportError as e:
+                raise RuntimeError("reportlab is required for PDF export. Install with: pip install reportlab") from e
+
+            c = canvas.Canvas(path, pagesize=letter)
+            width, height = letter
+            margin = 0.75 * inch
+
+            def draw_title(title: str, y: float) -> float:
+                c.setFont("Helvetica-Bold", 16)
+                c.drawString(margin, y, title)
+                return y - 0.3 * inch
+
+            def draw_text(lines: list[str], y: float, font="Helvetica", size=10) -> float:
+                c.setFont(font, size)
+                for ln in lines:
+                    if y < margin + 0.5 * inch:
+                        c.showPage(); y = height - margin
+                        c.setFont(font, size)
+                    c.drawString(margin, y, ln)
+                    y -= 0.18 * inch
+                return y
+
+            from datetime import date
+            y = height - margin
+            y = draw_title("TechFix Documentation", y)
+            c.setFont("Helvetica", 10)
+            c.drawString(margin, y, f"Generated: {date.today().isoformat()}")
+            y -= 0.3 * inch
+
+            # Overview
+            y = draw_title("Overview", y)
+            overview = [
+                "TechFix is a desktop accounting practice app (Tkinter + SQLite).",
+                "It guides users through the 10-step accounting cycle and produces statements.",
+            ]
+            y = draw_text(overview, y)
+
+            # Features
+            y = draw_title("Key Features", y)
+            features = [
+                "• Journalization, Ledger, Trial Balance (adjusted/unadjusted)",
+                "• Financial Statements (Income Statement, Balance Sheet, Cash Flow)",
+                "• Closing and Post-Closing Trial Balance, Reversing Schedule",
+                "• Exports: Journal/Ledger/TB/Financials to Excel; All-in-one workbook",
+                "• Configurable data directory via TECHFIX_DATA_DIR",
+            ]
+            y = draw_text(features, y)
+
+            # Modules
+            y = draw_title("Modules", y)
+            mods = [
+                "• techfix/db.py – schema, queries, trial balance, exports",
+                "• techfix/accounting.py – orchestration, cycle status, closing/reversing",
+                "• techfix/gui.py – Tkinter UI, tabs, theme, exports",
+                "• main.py – entry point",
+            ]
+            y = draw_text(mods, y)
+
+            # Usage
+            y = draw_title("Usage", y)
+            usage = [
+                "Run: python -m techfix or python TECHFIX/TECHFIX/main.py",
+                "Configure DB location: set TECHFIX_DATA_DIR to a writable folder",
+                "Use the Transactions tab to record entries; Refresh Cycle to update views",
+                "Use Export tab for Excel and Documentation outputs",
+            ]
+            y = draw_text(usage, y)
+
+            # Current Period & Cycle
+            try:
+                pid = int(self.engine.current_period_id or 0)
+                y = draw_title("Current Period", y)
+                cp = self.engine.current_period or {}
+                cp_lines = [
+                    f"• Name: {cp.get('name','')}",
+                    f"• Start: {cp.get('start_date','')}  End: {cp.get('end_date','')}  Closed: {cp.get('is_closed',0)}",
+                ]
+                y = draw_text(cp_lines, y)
+                y = draw_title("Cycle Status", y)
+                rows = self.engine.get_cycle_status()
+                cyc_lines = [f"• {int(r['step'])}. {r['step_name']}: {r['status']}" for r in rows]
+                y = draw_text(cyc_lines or ["• (no data)"], y)
+            except Exception:
+                pass
+
+            y = draw_title("Workflow", y)
+            wf_lines = [
+                "1. Record transactions in the Transactions pane (debits/credits).",
+                "2. Use Refresh Cycle to update Journal, Ledger and Trial Balance.",
+                "3. Generate Financial Statements and review the accounting equation.",
+                "4. Make Closing Entries, prepare Post‑Closing TB, schedule reversals.",
+                "5. Export reports (Excel) and documentation (PDF) from the Export tab.",
+            ]
+            y = draw_text(wf_lines, y)
+
+            y = draw_title("Equations & Treatment", y)
+            eq_lines = [
+                "• Income Statement: Net Income = Revenues − Expenses.",
+                "• Owner’s Equity Statement: Ending Capital = Beginning Capital + Net Income − Withdrawals.",
+                "• Balance Sheet: Assets = Liabilities + Ending Owner’s Equity.",
+                "• Contra‑assets reduce total assets (e.g., accumulated depreciation).",
+                "• Trial Balance displays net debit/credit by account based on normal side.",
+            ]
+            y = draw_text(eq_lines, y)
+
+            # Trial Balance Totals
+            try:
+                y = draw_title("Trial Balance Totals", y)
+                inc_temp_bs = True
+                try:
+                    statuses = self.engine.get_cycle_status()
+                    step8 = next((r for r in statuses if int(r['step']) == 8), None)
+                    if step8 and (step8['status'] == 'completed'):
+                        inc_temp_bs = False
+                except Exception:
+                    pass
+                tb_rows = db.compute_trial_balance(include_temporary=inc_temp_bs, period_id=self.engine.current_period_id, conn=self.engine.conn)
+                total_d = 0.0
+                total_c = 0.0
+                for r in tb_rows:
+                    d_amt, c_amt = self._balance_to_columns(r)
+                    total_d += float(d_amt or 0)
+                    total_c += float(c_amt or 0)
+                y = draw_text([f"• Total Debit: {total_d:,.2f}", f"• Total Credit: {total_c:,.2f}"], y)
+            except Exception:
+                pass
+
+            # Config & Paths
+            try:
+                y = draw_title("Config", y)
+                from pathlib import Path
+                data_dir = str(db.DB_DIR.resolve())
+                db_path = str(db.DB_PATH.resolve())
+                y = draw_text([f"• TECHFIX_DATA_DIR: {data_dir}", f"• Database: {db_path}"], y)
+            except Exception:
+                pass
+
+            # Read README.md if available and append
+            try:
+                from pathlib import Path
+                readme = Path(__file__).resolve().parents[2] / "README.md"
+                if readme.exists():
+                    y = draw_title("README Summary", y)
+                    # Take first ~40 non-empty lines
+                    lines = [ln.strip() for ln in readme.read_text(encoding="utf-8").splitlines() if ln.strip()][:40]
+                    y = draw_text(lines, y)
+            except Exception:
+                pass
+
+            c.showPage(); c.save()
+            messagebox.showinfo("Exported", f"Documentation exported to PDF: {path}")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export documentation: {e}")
 
     # --------------------- Shared helpers ---------------------
     def _load_all_views(self) -> None:

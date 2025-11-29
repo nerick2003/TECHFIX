@@ -1088,6 +1088,7 @@ def fetch_journal(period_id: Optional[int] = None, conn: Optional[sqlite3.Connec
         sql = (
             """
             SELECT je.id as entry_id, je.date, je.description, je.is_adjusting, je.is_closing, je.is_reversing,
+                   je.document_ref, je.external_ref,
                    jl.id as line_id, a.code, a.name, jl.debit, jl.credit
             FROM journal_entries je
             JOIN journal_lines jl ON jl.entry_id = je.id

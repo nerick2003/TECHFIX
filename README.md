@@ -16,7 +16,7 @@ Run
 
 Tests
 
-- Run: `python -m unittest discover -s TECHFIX/TECHFIX/tests -p "test_*.py" -v`.
+- Run: `python -m unittest discover -s tests -p "test_*.py" -v`.
 
 Notes
 
@@ -28,3 +28,8 @@ Next steps
 - Add packaging (`pyproject.toml`) for installable CLI entry point.
 - Add `.gitignore` for `*.sqlite3`, `__pycache__/`, and local artifacts.
 - Add type hints across modules and enable static checks.
+
+Documentation
+
+- Use the Export tab → "Export Documentation (PDF)" to generate a program overview PDF.
+- The PDF includes purpose, features, modules, usage, and data/config notes.
