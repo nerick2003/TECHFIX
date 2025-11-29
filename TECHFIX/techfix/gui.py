@@ -9,6 +9,13 @@ from datetime import datetime, timedelta
 import calendar
 from typing import Optional, Sequence, List, Dict
 import json
+import sys
+import subprocess
+import platform
+try:
+    import winreg
+except Exception:
+    winreg = None
 
 # Support running as a module (package) or as a script
 try:
@@ -92,6 +99,11 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
 
+        try:
+            self._apply_theme(self._get_system_theme(), initial=True)
+        except Exception:
+            pass
+
         # Bind F11 to toggle fullscreen (still available)
         self.bind('<F11>', lambda e: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
         self.bind('<Escape>', lambda e: self.attributes('-fullscreen', False))
@@ -128,6 +140,11 @@ class TechFixApp(tk.Tk):
         self._load_periods()
         self._update_theme_widgets()
         self._load_all_views()
+
+        try:
+            self._start_theme_monitor()
+        except Exception:
+            pass
 
     def destroy(self) -> None:
         try:
@@ -689,6 +706,161 @@ class TechFixApp(tk.Tk):
             sweep()
         except Exception:
             self._theme_animating = False
+
+    def _get_system_theme(self) -> str:
+        try:
+            os_name = platform.system()
+            if os_name == "Windows" and winreg:
+                try:
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+                    val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                    return "Light" if int(val) != 0 else "Dark"
+                except Exception:
+                    return "Light"
+            if os_name == "Darwin":
+                try:
+                    out = subprocess.check_output(["defaults", "read", "-g", "AppleInterfaceStyle"], stderr=subprocess.STDOUT)
+                    s = out.decode().strip()
+                    return "Dark" if s.lower().startswith("dark") else "Light"
+                except Exception:
+                    return "Light"
+            return "Light"
+        except Exception:
+            return "Light"
+
+    def _start_theme_monitor(self) -> None:
+        try:
+            self._last_system_theme = self._get_system_theme()
+            def _poll():
+                try:
+                    cur = self._get_system_theme()
+                    if cur != getattr(self, "_last_system_theme", cur):
+                        self._last_system_theme = cur
+                        try:
+                            self._apply_theme(cur)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    self.after(3000, _poll)
+                except Exception:
+                    pass
+            _poll()
+        except Exception:
+            pass
+    def _animate_view_transition(self, target: tk.Widget, *, duration_ms: int = 250) -> None:
+        try:
+            target.update_idletasks()
+            w = max(1, target.winfo_width() or 800)
+            h = max(1, target.winfo_height() or 600)
+            overlay = tk.Canvas(target, highlightthickness=0, bd=0, bg=self.palette.get('surface_bg', '#ffffff'))
+            overlay.place(x=0, y=0, width=w, height=h)
+            try:
+                overlay.lift()
+            except Exception:
+                pass
+            steps = max(10, int(duration_ms / 15))
+            dx = w / float(steps)
+            rect = overlay.create_rectangle(0, 0, 1, h, fill=self.palette.get('surface_bg', '#ffffff'), outline="")
+            i = 0
+            def sweep():
+                nonlocal i
+                i += 1
+                x2 = int(min(w, i * dx))
+                overlay.coords(rect, 0, 0, x2, h)
+                if i < steps:
+                    self.after(15, sweep)
+                else:
+                    try:
+                        overlay.place_forget()
+                        overlay.destroy()
+                    except Exception:
+                        pass
+            sweep()
+        except Exception:
+            pass
+
+    def _animate_swipe_to(self, target: tk.Widget, *, direction: str = 'right', duration_ms: int = 250) -> None:
+        try:
+            # Slide the target frame into view using place, then restore pack
+            parent = getattr(self, 'content_area', self)
+            target.update_idletasks()
+            parent.update_idletasks()
+            w = max(1, parent.winfo_width() or target.winfo_width() or 800)
+            h = max(1, parent.winfo_height() or target.winfo_height() or 600)
+            try:
+                target.pack_forget()
+            except Exception:
+                pass
+            start_x = w if direction == 'right' else -w
+            target.place(in_=parent, x=start_x, y=0, width=w, height=h)
+            try:
+                target.lift()
+            except Exception:
+                pass
+            steps = max(10, int(duration_ms / 15))
+            dx = w / float(steps)
+            i = 0
+            def step():
+                nonlocal i, start_x
+                i += 1
+                if direction == 'right':
+                    x = int(max(0, start_x - i * dx))
+                else:
+                    x = int(min(0, start_x + i * dx))
+                target.place_configure(x=x)
+                if i < steps:
+                    self.after(15, step)
+                else:
+                    try:
+                        target.place_forget()
+                        target.pack(fill=tk.BOTH, expand=True)
+                    except Exception:
+                        pass
+            step()
+        except Exception:
+            pass
+
+    def _animate_tab_pulse(self, frame: tk.Widget, *, duration_ms: int = 200) -> None:
+        try:
+            colors = self.palette
+            base = colors.get('surface_bg', '#ffffff')
+            accent = colors.get('accent_color', '#2563eb')
+            def hex_to_rgb(h: str):
+                h = h.lstrip('#')
+                return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+            def rgb_to_hex(r: int, g: int, b: int):
+                return f"#{r:02x}{g:02x}{b:02x}"
+            r1, g1, b1 = hex_to_rgb(accent)
+            r2, g2, b2 = hex_to_rgb(base)
+            steps = max(8, int(duration_ms / 15))
+            style_name = f"Techfix.Pulse.{id(frame)}.TFrame"
+            self.style.configure(style_name, background=accent)
+            frame.configure(style=style_name)
+            i = 0
+            def step():
+                nonlocal i
+                i += 1
+                t = i / float(steps)
+                r = int(r1 + (r2 - r1) * t)
+                g = int(g1 + (g2 - g1) * t)
+                b = int(b1 + (b2 - b1) * t)
+                c = rgb_to_hex(r, g, b)
+                try:
+                    self.style.configure(style_name, background=c)
+                except Exception:
+                    pass
+                if i < steps:
+                    self.after(15, step)
+                else:
+                    try:
+                        frame.configure(style="Techfix.Surface.TFrame")
+                    except Exception:
+                        pass
+            step()
+        except Exception:
+            pass
 
     def _style_combobox_popdown(self, cb: ttk.Combobox) -> None:
         try:
@@ -1290,6 +1462,7 @@ class TechFixApp(tk.Tk):
             style="Techfix.TButton",
         ).pack(side=tk.LEFT, padx=(0, 12))
 
+
         # Theme toggle buttons
         theme_frame = ttk.Frame(toolbar, style="Techfix.App.TFrame")
         theme_frame.pack(side=tk.RIGHT, padx=(0, 12))
@@ -1537,9 +1710,21 @@ class TechFixApp(tk.Tk):
             if index >= len(self._tab_frames):
                 index = 0
 
-            # Show selected frame
             sel = self._tab_frames[index]
-            sel.pack(fill=tk.BOTH, expand=True)
+            try:
+                cur = getattr(self, '_current_nav_index', None)
+                direction = 'right'
+                try:
+                    if isinstance(cur, int) and index < cur:
+                        direction = 'left'
+                except Exception:
+                    pass
+                self._animate_swipe_to(sel, direction=direction)
+            except Exception:
+                try:
+                    sel.pack(fill=tk.BOTH, expand=True)
+                except Exception:
+                    pass
 
             # Update nav button visuals (indicator and selected style)
             try:
@@ -2117,9 +2302,13 @@ class TechFixApp(tk.Tk):
         recent_wrap = ttk.Labelframe(main_container, text="Recent Transactions", style="Techfix.TLabelframe")
         recent_wrap.grid(row=0, column=1, sticky="nsew")
         recent_wrap.columnconfigure(0, weight=1)
-        recent_wrap.rowconfigure(0, weight=1)
+        recent_wrap.rowconfigure(1, weight=1)
+        controls = ttk.Frame(recent_wrap, style="Techfix.Surface.TFrame")
+        controls.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 0))
+        ttk.Button(controls, text="Refresh", command=lambda: self._load_recent_transactions(), style="Techfix.TButton").pack(side=tk.LEFT)
+        ttk.Button(controls, text="Delete Selected", command=self._delete_selected_transaction, style="Techfix.Danger.TButton").pack(side=tk.LEFT, padx=(6,0))
         tree_frame = ttk.Frame(recent_wrap, style="Techfix.Surface.TFrame")
-        tree_frame.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
+        tree_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=6)
 
         cols = ("date", "reference", "description", "debit", "credit", "account")
         self.txn_recent_tree = ttk.Treeview(
@@ -2160,6 +2349,43 @@ class TechFixApp(tk.Tk):
         # Load initial recent transactions
         try:
             self._load_recent_transactions()
+        except Exception:
+            pass
+
+    def _delete_selected_transaction(self) -> None:
+        try:
+            if not hasattr(self, 'txn_recent_tree'):
+                return
+            sel = self.txn_recent_tree.selection()
+            if not sel:
+                messagebox.showinfo("Delete", "Select a transaction to delete.")
+                return
+            item = sel[0]
+            vals = self.txn_recent_tree.item(item, 'values')
+            try:
+                entry_id = int(vals[1]) if len(vals) > 1 and vals[1] else None
+            except Exception:
+                entry_id = None
+            if not entry_id:
+                messagebox.showerror("Delete", "Could not determine the selected transaction ID.")
+                return
+            if not messagebox.askyesno("Confirm Delete", f"Delete transaction #{entry_id}? This cannot be undone."):
+                return
+            conn = self.engine.conn
+            try:
+                conn.execute("DELETE FROM journal_entries WHERE id=?", (entry_id,))
+                conn.commit()
+            except Exception as e:
+                messagebox.showerror("Delete Failed", f"Error deleting transaction: {e}")
+                return
+            try:
+                self._load_recent_transactions()
+            except Exception:
+                pass
+            try:
+                self._load_journal_entries()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -3193,9 +3419,33 @@ class TechFixApp(tk.Tk):
         # Cash Flow Tab (placeholder for future implementation)
         self.cash_flow_frame = ttk.Frame(self.fs_notebook, style="Techfix.Surface.TFrame")
         self.fs_notebook.add(self.cash_flow_frame, text="Cash Flow")
+        try:
+            self.fs_notebook.bind("<<NotebookTabChanged>>", self._on_fs_tab_changed)
+        except Exception:
+            pass
         
         # Create text widgets for each statement
         self._create_fs_text_widgets()
+
+    def _on_fs_tab_changed(self, event=None):
+        try:
+            w = event.widget if event and hasattr(event, 'widget') else getattr(self, 'fs_notebook', None)
+            if not w:
+                return
+            tab_id = w.select()
+            if not tab_id:
+                return
+            try:
+                frame = self.nametowidget(tab_id)
+            except Exception:
+                frame = None
+            if frame:
+                try:
+                    self._animate_tab_pulse(frame)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _build_trial_tab(self) -> None:
         """Build the Trial Balance tab"""
