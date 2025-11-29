@@ -321,6 +321,34 @@ class AccountingEngine:
             memo=f"Auto-reversal of entry #{entry_id}",
         )
 
+    def process_reversing_schedule(self, as_of: Optional[str] = None) -> List[int]:
+        created: List[int] = []
+        if not self.current_period_id:
+            return created
+        try:
+            rows = db.list_reversing_queue(self.current_period_id, conn=self.conn)
+            cutoff = as_of or datetime.utcnow().date().isoformat()
+            for r in rows:
+                try:
+                    status = r['status'] if 'status' in r.keys() else 'pending'
+                    when = r['reverse_on'] if 'reverse_on' in r.keys() else None
+                    if status != 'pending' or not when:
+                        continue
+                    if str(when) > str(cutoff):
+                        continue
+                    eid = int(r['original_entry_id'])
+                    rid = self.reverse_entry(eid, when)
+                    if rid:
+                        created.append(int(rid))
+                        db.update_reversing_status(int(r['id']), 'completed', reversed_entry_id=int(rid), conn=self.conn)
+                except Exception:
+                    pass
+            if created:
+                db.set_cycle_step_status(self.current_period_id, 10, 'completed', note='Reversing entries posted', conn=self.conn)
+            return created
+        except Exception:
+            return created
+
     @property
     def current_period_id(self) -> Optional[int]:
         if self.current_period:
@@ -416,36 +444,38 @@ class AccountingEngine:
             return {"error": "Cash account not found"}
         cash_id = int(cash_acc["id"])
 
-        cur = self.conn.execute(
+        clause = " AND je.period_id = ?" if self.current_period_id else ""
+        params = [start_date, end_date] + ([int(self.current_period_id)] if self.current_period_id else [])
+        sql = (
             """
             SELECT je.id AS entry_id, je.date AS date
             FROM journal_entries je
             WHERE date(je.date) BETWEEN date(?) AND date(?)
+            """
+            + clause
+            + """
             ORDER BY je.date, je.id
-            """,
-            (start_date, end_date),
+            """
         )
+        cur = self.conn.execute(sql, params)
         entries = [r["entry_id"] for r in cur.fetchall()]
 
         sections = {"Operating": [], "Investing": [], "Financing": []}
         totals = {"Operating": 0.0, "Investing": 0.0, "Financing": 0.0}
 
         for eid in entries:
-            # get all lines for this entry
-            lines = list(self.conn.execute("SELECT account_id, debit, credit FROM journal_lines WHERE entry_id=?", (eid,)).fetchall())
-            # identify cash lines
+            lines = list(self.conn.execute(
+                "SELECT account_id, debit, credit FROM journal_lines WHERE entry_id=?",
+                (eid,)
+            ).fetchall())
             cash_lines = [l for l in lines if int(l["account_id"]) == cash_id and (l["debit"] or l["credit"])]
             if not cash_lines:
                 continue
-            # classify using the non-cash accounts present
             non_cash_lines = [l for l in lines if int(l["account_id"]) != cash_id and (l["debit"] or l["credit"])]
-            # if multiple non-cash accounts, classify by majority or first
             for cl in cash_lines:
                 amt = float(cl["debit"] or 0) - float(cl["credit"] or 0)
-                # amt >0 means cash increased (debit), amt <0 means cash decreased (credit)
                 klass = "Operating"
                 if non_cash_lines:
-                    # inspect first non-cash account type
                     other_id = int(non_cash_lines[0]["account_id"])
                     acct = self.conn.execute("SELECT type FROM accounts WHERE id=?", (other_id,)).fetchone()
                     acct_type = acct["type"] if acct else None
@@ -453,9 +483,6 @@ class AccountingEngine:
                         klass = "Investing"
                     elif acct_type in ("Liability", "Equity"):
                         klass = "Financing"
-                    else:
-                        klass = "Operating"
-
                 sections[klass].append({
                     "entry_id": eid,
                     "date": self.conn.execute("SELECT date FROM journal_entries WHERE id=?", (eid,)).fetchone()["date"],
@@ -524,7 +551,7 @@ class AccountingEngine:
             )
 
     def list_reversing_queue(self) -> List[sqlite3.Row]:
-        return list(db.list_reversing_queue(conn=self.conn))
+        return list(db.list_reversing_queue(self.current_period_id, conn=self.conn))
 
     def update_adjustment_status(self, adjustment_id: int, status: str, notes: Optional[str] = None) -> None:
         db.update_adjustment_status(adjustment_id, status, notes=notes, conn=self.conn)

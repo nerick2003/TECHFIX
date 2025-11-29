@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Iterable, Optional, Tuple, Any, Dict, List
 import json
@@ -21,6 +21,8 @@ ACCOUNTING_CYCLE_STEPS: List[str] = [
     "Prepare post-closing trial balance",
     "Schedule reversing entries",
 ]
+
+SCHEMA_VERSION: int = 1
 
 
 def get_connection() -> sqlite3.Connection:
@@ -281,6 +283,21 @@ def _apply_schema_updates(conn: sqlite3.Connection) -> None:
         )
         """,
     )
+    _ensure_column(conn, "reversing_entry_queue", "reversed_entry_id INTEGER")
+
+    _ensure_table(
+        conn,
+        "schema_versions",
+        """
+        CREATE TABLE schema_versions (
+            version INTEGER PRIMARY KEY,
+            applied_on TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    cur = conn.execute("SELECT 1 FROM schema_versions WHERE version=?", (SCHEMA_VERSION,))
+    if cur.fetchone() is None:
+        conn.execute("INSERT INTO schema_versions(version) VALUES (?)", (SCHEMA_VERSION,))
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column_def: str) -> None:
@@ -384,7 +401,7 @@ def insert_journal_entry(
             period = get_current_period(conn=conn)
             period_id = period["id"] if period else None
 
-        posted_at = datetime.utcnow().isoformat(timespec="seconds") if status == "posted" else None
+        posted_at = datetime.now(timezone.utc).isoformat(timespec="seconds") if status == "posted" else None
         if status != "posted" and posted_by:
             posted_by = None
 
@@ -684,7 +701,7 @@ def log_audit(
             INSERT INTO audit_log(user, action, details, timestamp)
             VALUES (?, ?, ?, ?)
             """,
-            (user, action, details, datetime.utcnow().isoformat(timespec="seconds")),
+            (user, action, details, datetime.now(timezone.utc).isoformat(timespec="seconds")),
         )
         conn.commit()
     finally:
@@ -726,7 +743,7 @@ def create_adjustment_request(
         conn = get_connection()
     try:
         ensure_cycle_steps(period_id, conn=conn)
-        requested_on = requested_on or datetime.utcnow().date().isoformat()
+        requested_on = requested_on or datetime.now(timezone.utc).date().isoformat()
         cur = conn.execute(
             """
             INSERT INTO adjustment_requests(period_id, description, requested_on, requested_by, notes)
@@ -787,7 +804,7 @@ def link_adjustment_to_entry(
             (
                 entry_id,
                 approved_by,
-                approved_on or datetime.utcnow().date().isoformat(),
+                approved_on or datetime.now(timezone.utc).date().isoformat(),
                 status,
                 adjustment_id,
             ),
@@ -961,19 +978,47 @@ def schedule_reversing_entry(
             conn.close()
 
 
-def list_reversing_queue(*, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
+def list_reversing_queue(period_id: Optional[int] = None, *, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
     owned = conn is not None
     if not conn:
         conn = get_connection()
     try:
-        cur = conn.execute(
+        sql = (
             """
-            SELECT id, original_entry_id, reverse_on, created_on, status
-            FROM reversing_entry_queue
-            ORDER BY reverse_on, id
+            SELECT rq.id, rq.original_entry_id, rq.reverse_on, rq.created_on, rq.status, rq.reversed_entry_id
+            FROM reversing_entry_queue rq
+            JOIN journal_entries je ON je.id = rq.original_entry_id
+            {period_clause}
+            ORDER BY rq.reverse_on, rq.id
             """
         )
+        params: list = []
+        period_clause = ""
+        if period_id is not None:
+            period_clause = "WHERE je.period_id = ?"
+            params.append(period_id)
+        sql = sql.format(period_clause=period_clause)
+        cur = conn.execute(sql, params)
         return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def update_reversing_status(item_id: int, status: str, *, reversed_entry_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None) -> None:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE reversing_entry_queue
+            SET status=?, reversed_entry_id=COALESCE(?, reversed_entry_id)
+            WHERE id=?
+            """,
+            (status, reversed_entry_id, item_id),
+        )
+        conn.commit()
     finally:
         if not owned:
             conn.close()
@@ -992,39 +1037,39 @@ def get_account_by_name(name: str, conn: Optional[sqlite3.Connection] = None) ->
 
 
 def compute_trial_balance(
-    *, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None
+    *, from_date: Optional[str] = None, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None
 ) -> list[sqlite3.Row]:
     owned = conn is not None
     if not conn:
         conn = get_connection()
     try:
         params: list = []
-        date_filter = ""
+        where_extra = ""
         if up_to_date:
-            date_filter = "AND je.date <= ?"
+            where_extra += " AND date(je.date) <= date(?)"
             params.append(up_to_date)
+        if from_date:
+            where_extra += " AND date(je.date) >= date(?)"
+            params.append(from_date)
 
         temp_filter = ""
         if not include_temporary:
             temp_filter = "AND a.is_permanent = 1"
 
-        period_filter = ""
         if period_id is not None:
-            period_filter = "AND je.period_id = ?"
+            where_extra += " AND je.period_id = ?"
             params.append(period_id)
 
         # Compute a signed balance then split into non-negative net_debit / net_credit
         balance_expr = "(COALESCE(SUM(jl.debit),0) - COALESCE(SUM(jl.credit),0))"
         sql = f"""
             SELECT a.id as account_id, a.code, a.name, a.type, a.normal_side,
-                   -- net_debit: positive balance when debits exceed credits
                    ROUND(CASE WHEN {balance_expr} > 0 THEN {balance_expr} ELSE 0 END, 2) AS net_debit,
-                   -- net_credit: positive balance when credits exceed debits
                    ROUND(CASE WHEN {balance_expr} < 0 THEN -({balance_expr}) ELSE 0 END, 2) AS net_credit
             FROM accounts a
             LEFT JOIN journal_lines jl ON jl.account_id = a.id
-            LEFT JOIN journal_entries je ON je.id = jl.entry_id {date_filter} {period_filter}
-            WHERE a.is_active = 1 {temp_filter}
+            LEFT JOIN journal_entries je ON je.id = jl.entry_id
+            WHERE a.is_active = 1 {temp_filter} {where_extra}
             GROUP BY a.id, a.code, a.name, a.type, a.normal_side
             ORDER BY a.code
         """
@@ -1035,43 +1080,58 @@ def compute_trial_balance(
             conn.close()
 
 
-def fetch_journal(conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
+def fetch_journal(period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
     owned = conn is not None
     if not conn:
         conn = get_connection()
     try:
-        cur = conn.execute(
+        sql = (
             """
             SELECT je.id as entry_id, je.date, je.description, je.is_adjusting, je.is_closing, je.is_reversing,
                    jl.id as line_id, a.code, a.name, jl.debit, jl.credit
             FROM journal_entries je
             JOIN journal_lines jl ON jl.entry_id = je.id
             JOIN accounts a ON a.id = jl.account_id
+            {period_clause}
             ORDER BY je.date, je.id, jl.id
             """
         )
+        params: list = []
+        period_clause = ""
+        if period_id is not None:
+            period_clause = "WHERE je.period_id = ?"
+            params.append(period_id)
+        sql = sql.format(period_clause=period_clause)
+        cur = conn.execute(sql, params)
         return cur.fetchall()
     finally:
         if not owned:
             conn.close()
 
 
-def fetch_ledger(conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
+def fetch_ledger(period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
     owned = conn is not None
     if not conn:
         conn = get_connection()
     try:
-        cur = conn.execute(
+        sql = (
             """
             SELECT a.id as account_id, a.code, a.name, a.type, a.normal_side,
                    je.date, je.description, jl.debit, jl.credit
             FROM accounts a
             LEFT JOIN journal_lines jl ON jl.account_id = a.id
             LEFT JOIN journal_entries je ON je.id = jl.entry_id
-            WHERE a.is_active = 1
+            WHERE a.is_active = 1 {period_clause}
             ORDER BY a.code, je.date, je.id, jl.id
             """
         )
+        params: list = []
+        period_clause = ""
+        if period_id is not None:
+            period_clause = "AND je.period_id = ?"
+            params.append(period_id)
+        sql = sql.format(period_clause=period_clause)
+        cur = conn.execute(sql, params)
         return cur.fetchall()
     finally:
         if not owned:

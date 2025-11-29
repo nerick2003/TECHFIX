@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import calendar
 from typing import Optional, Sequence, List, Dict
+import json
 
 # Support running as a module (package) or as a script
 try:
@@ -85,10 +86,15 @@ class TechFixApp(tk.Tk):
         x = max(0, (screen_w - width) // 2)
         y = max(0, (screen_h - height) // 2)
         self.geometry(f"{width}x{height}+{x}+{y}")
+        try:
+            self._load_window_settings()
+        except Exception:
+            pass
 
         # Bind F11 to toggle fullscreen (still available)
         self.bind('<F11>', lambda e: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
         self.bind('<Escape>', lambda e: self.attributes('-fullscreen', False))
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
         
         # Handle window resize
         self.bind('<Configure>', self._on_window_resize)
@@ -103,6 +109,9 @@ class TechFixApp(tk.Tk):
         self.current_period_id: Optional[int] = self.engine.current_period_id
         self.cycle_status_rows: List = []
         self._scroll_canvases: list[tk.Canvas] = []
+        self._nav_buttons: list = []
+        self.period_form_cache: Dict[int, Dict[str, str]] = {}
+        self._last_period_id: Optional[int] = self.current_period_id
 
         self.style = ttk.Style(self)
         # Initialize theme and palette before building UI
@@ -113,6 +122,7 @@ class TechFixApp(tk.Tk):
         self._build_ui()
         
         # Apply theme to all widgets after UI is built
+        
         self._update_theme_widgets()
         self._load_periods()
         self._update_theme_widgets()
@@ -132,13 +142,19 @@ class TechFixApp(tk.Tk):
         self.palette = THEMES[name]
         self._configure_style()
         
-        # Update button styles if buttons exist
+        # Update theme toggle button styles
         if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
-            self.light_btn.configure(style="Techfix.TButton" if name == "Light" else "TButton")
-            self.dark_btn.configure(style="Techfix.TButton" if name == "Dark" else "TButton")
+            self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
+            self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
             
         # Always update theme widgets when theme changes
         self._update_theme_widgets()
+        try:
+            self.set_status(f"Theme: {name}")
+            if not initial:
+                self._save_window_settings()
+        except Exception:
+            pass
 
     def _configure_style(self) -> None:
         colors = self.palette
@@ -297,6 +313,34 @@ class TechFixApp(tk.Tk):
             foreground=[("active", "#ffffff")],
         )
 
+        # Theme toggle button styles
+        self.style.configure(
+            "Techfix.Theme.TButton",
+            background=colors["surface_bg"],
+            foreground=colors["text_primary"],
+            padding=(10, 6),
+            borderwidth=1,
+            relief="solid",
+        )
+        self.style.map(
+            "Techfix.Theme.TButton",
+            background=[("active", colors.get("tab_active_bg"))],
+            foreground=[("active", colors.get("text_primary"))],
+        )
+        self.style.configure(
+            "Techfix.Theme.Selected.TButton",
+            background=colors["accent_color"],
+            foreground="#ffffff",
+            padding=(10, 6),
+            borderwidth=1,
+            relief="solid",
+        )
+        self.style.map(
+            "Techfix.Theme.Selected.TButton",
+            background=[("active", colors.get("accent_hover"))],
+            foreground=[("active", "#ffffff")],
+        )
+
         self.style.configure(
             "Techfix.TCheckbutton",
             background=colors["surface_bg"],
@@ -346,6 +390,13 @@ class TechFixApp(tk.Tk):
         )
         self.style.layout("Techfix.Treeview", self.style.layout("Treeview"))
 
+        self.style.configure(
+            "Techfix.StatusBar.TLabel",
+            background=colors.get("app_bg", "#ffffff"),
+            foreground=colors.get("text_secondary", "#4b5563"),
+            font=FONT_BASE,
+        )
+
     def _update_theme_widgets(self) -> None:
         """Apply current palette colors to widgets that need manual updates."""
         try:
@@ -363,7 +414,7 @@ class TechFixApp(tk.Tk):
                         pass
 
             # Update any Text widgets created for financial statements
-            for attr in ('income_text', 'balance_sheet_text', 'cash_flow_text', 'close_log'):
+            for attr in ('income_text', 'balance_sheet_text', 'cash_flow_text', 'close_log', 'txn_memo'):
                 if hasattr(self, attr):
                     w = getattr(self, attr)
                     try:
@@ -374,6 +425,16 @@ class TechFixApp(tk.Tk):
                             selectbackground=colors.get('accent_color', '#2563eb'),
                             selectforeground='#ffffff'
                         )
+                        try:
+                            w.configure(
+                                bd=1,
+                                relief=tk.SOLID,
+                                highlightthickness=1,
+                                highlightbackground=colors.get('entry_border', '#d8dee9'),
+                                highlightcolor=colors.get('accent_color', '#2563eb'),
+                            )
+                        except Exception:
+                            pass
                         # Update commonly used tags so previously-inserted tagged text remains visible after theme change
                         try:
                             w.tag_configure('header', foreground=colors.get('accent_color', '#2563eb'))
@@ -417,6 +478,8 @@ class TechFixApp(tk.Tk):
                         try:
                             # Configure a generic 'row' tag with proper colors
                             obj.tag_configure('row', background=colors.get('surface_bg', '#ffffff'), foreground=colors.get('text_primary', '#000000'))
+                            # Ensure totals rows reflect current theme
+                            obj.tag_configure('totals', background=colors.get('tab_selected_bg', '#e0ecff'), foreground=colors.get('text_primary', '#000000'))
                             # Retag existing rows so the tag applies immediately
                             for iid in obj.get_children():
                                 tags = tuple(obj.item(iid, 'tags') or ())
@@ -467,6 +530,83 @@ class TechFixApp(tk.Tk):
                         self.closing_preview_tree.column(c, width=max(80, w))
                     except Exception:
                         pass
+            # Auto-scale recent transactions columns
+            if hasattr(self, 'txn_recent_tree'):
+                total = self.txn_recent_tree.winfo_width() or 1
+                col_defs = {
+                    'date': int(total * 0.12),
+                    'reference': int(total * 0.10),
+                    'description': int(total * 0.42),
+                    'debit': int(total * 0.12),
+                    'credit': int(total * 0.12),
+                    'account': int(total * 0.12),
+                }
+                for c, w in col_defs.items():
+                    try:
+                        self.txn_recent_tree.column(c, width=max(80, w), stretch=(c == 'description'))
+                    except Exception:
+                        pass
+            # Auto-scale journal columns
+            if hasattr(self, 'journal_tree'):
+                total = self.journal_tree.winfo_width() or 1
+                col_defs = {
+                    'date': int(total * 0.12),
+                    'reference': int(total * 0.10),
+                    'description': int(total * 0.42),
+                    'debit': int(total * 0.12),
+                    'credit': int(total * 0.12),
+                    'account': int(total * 0.12),
+                }
+                for c, w in col_defs.items():
+                    try:
+                        self.journal_tree.column(c, width=max(80, w), stretch=(c == 'description'))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _load_window_settings(self):
+        try:
+            settings_path = db.DB_DIR / "settings.json"
+            if settings_path.exists():
+                data = json.loads(settings_path.read_text(encoding="utf-8"))
+                geom = data.get("geometry")
+                full = data.get("fullscreen")
+                theme = data.get("theme")
+                if isinstance(geom, str) and geom:
+                    self.geometry(geom)
+                if isinstance(full, bool):
+                    self.attributes('-fullscreen', full)
+                if isinstance(theme, str) and theme in THEMES:
+                    self.theme_name = theme
+                    self.palette = THEMES[theme]
+        except Exception:
+            pass
+
+    def _save_window_settings(self):
+        try:
+            settings_path = db.DB_DIR / "settings.json"
+            payload = {
+                "geometry": self.winfo_geometry(),
+                "fullscreen": bool(self.attributes('-fullscreen')),
+                "theme": self.theme_name,
+            }
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text(json.dumps(payload), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _on_close(self):
+        try:
+            self._save_window_settings()
+        except Exception:
+            pass
+        self.destroy()
+
+    def set_status(self, text: str) -> None:
+        try:
+            if hasattr(self, 'status_var'):
+                self.status_var.set(str(text))
         except Exception:
             pass
 
@@ -476,12 +616,30 @@ class TechFixApp(tk.Tk):
             return
         for period_id, name in self.periods:
             if name == selected:
+                # snapshot previous period form
+                try:
+                    if self._last_period_id:
+                        snap = self._snapshot_txn_form()
+                        if snap:
+                            self.period_form_cache[int(self._last_period_id)] = snap
+                except Exception:
+                    pass
                 self.current_period_id = period_id
                 try:
                     self.engine.set_active_period(period_id)
                 except Exception:
                     pass
-                self._load_all_views()
+                self._refresh_cycle_and_views()
+                # apply cached form or prefill from last entry
+                try:
+                    snap = self.period_form_cache.get(int(period_id))
+                    if snap:
+                        self._apply_txn_form(snap)
+                    else:
+                        self._prefill_txn_from_last_entry()
+                except Exception:
+                    pass
+                self._last_period_id = period_id
                 break
 
     def _load_periods(self):
@@ -515,6 +673,10 @@ class TechFixApp(tk.Tk):
                 self.title("New Accounting Period")
                 self.parent = parent
                 self.result = None
+                try:
+                    self.configure(bg=parent.palette.get('surface_bg', '#ffffff'))
+                except Exception:
+                    pass
                 
                 # Make dialog modal
                 self.transient(parent)
@@ -524,19 +686,21 @@ class TechFixApp(tk.Tk):
                 self.focus_set()
                 
                 # Add widgets
-                ttk.Label(self, text="Start Date (YYYY-MM-DD):").grid(row=0, column=0, padx=5, pady=5)
-                self.start_entry = ttk.Entry(self)
+                ttk.Label(self, text="Start Date (YYYY-MM-DD):", style="Techfix.TLabel").grid(row=0, column=0, padx=5, pady=5)
+                self.start_entry = ttk.Entry(self, style="Techfix.TEntry")
                 self.start_entry.grid(row=0, column=1, padx=5, pady=5)
+                ttk.Button(self, text="📅", command=lambda: self._pick_date(self.start_entry), style="Techfix.Theme.TButton", width=3).grid(row=0, column=2, padx=2)
                 
-                ttk.Label(self, text="End Date (YYYY-MM-DD):").grid(row=1, column=0, padx=5, pady=5)
-                self.end_entry = ttk.Entry(self)
+                ttk.Label(self, text="End Date (YYYY-MM-DD):", style="Techfix.TLabel").grid(row=1, column=0, padx=5, pady=5)
+                self.end_entry = ttk.Entry(self, style="Techfix.TEntry")
                 self.end_entry.grid(row=1, column=1, padx=5, pady=5)
+                ttk.Button(self, text="📅", command=lambda: self._pick_date(self.end_entry), style="Techfix.Theme.TButton", width=3).grid(row=1, column=2, padx=2)
                 
-                btn_frame = ttk.Frame(self)
-                btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
+                btn_frame = ttk.Frame(self, style="Techfix.Surface.TFrame")
+                btn_frame.grid(row=2, column=0, columnspan=3, pady=10)
                 
-                ttk.Button(btn_frame, text="Create", command=self.on_ok).pack(side=tk.LEFT, padx=5)
-                ttk.Button(btn_frame, text="Cancel", command=self.on_cancel).pack(side=tk.LEFT, padx=5)
+                ttk.Button(btn_frame, text="Create", command=self.on_ok, style="Techfix.TButton").pack(side=tk.LEFT, padx=5)
+                ttk.Button(btn_frame, text="Cancel", command=self.on_cancel, style="Techfix.Theme.TButton").pack(side=tk.LEFT, padx=5)
                 
                 # Center the dialog
                 self.update_idletasks()
@@ -545,11 +709,108 @@ class TechFixApp(tk.Tk):
                 x = (self.winfo_screenwidth() // 2) - (width // 2)
                 y = (self.winfo_screenheight() // 2) - (height // 2)
                 self.geometry(f'{width}x{height}+{x}+{y}')
+
+            def _pick_date(self, entry_widget):
+                class DatePicker(tk.Toplevel):
+                    def __init__(self, parent, callback=None, initial_date=None):
+                        super().__init__(parent)
+                        self.transient(parent)
+                        self.grab_set()
+                        self.callback = callback
+                        self.title("Pick Date")
+                        self.resizable(False, False)
+
+                        today = datetime.now().date()
+                        if initial_date:
+                            try:
+                                dt = datetime.strptime(initial_date, '%Y-%m-%d').date()
+                            except Exception:
+                                dt = today
+                        else:
+                            dt = today
+
+                        self.year = dt.year
+                        self.month = dt.month
+
+                        header = ttk.Frame(self)
+                        header.pack(fill=tk.X, padx=8, pady=6)
+                        ttk.Button(header, text="◀", width=3, command=self._prev_month).pack(side=tk.LEFT)
+                        self.title_lbl = ttk.Label(header, text="", anchor=tk.CENTER)
+                        self.title_lbl.pack(side=tk.LEFT, expand=True)
+                        ttk.Button(header, text="▶", width=3, command=self._next_month).pack(side=tk.RIGHT)
+
+                        self.cal_frame = ttk.Frame(self)
+                        self.cal_frame.pack(padx=8, pady=(0,8))
+                        self._draw_calendar()
+
+                    def _draw_calendar(self):
+                        for child in self.cal_frame.winfo_children():
+                            child.destroy()
+                        self.title_lbl.config(text=f"{calendar.month_name[self.month]} {self.year}")
+                        wdays = ['Mo','Tu','We','Th','Fr','Sa','Su']
+                        for c, wd in enumerate(wdays):
+                            ttk.Label(self.cal_frame, text=wd, width=3, anchor='center').grid(row=0, column=c)
+                        m = calendar.monthcalendar(self.year, self.month)
+                        for r, week in enumerate(m, start=1):
+                            for c, day in enumerate(week):
+                                if day == 0:
+                                    ttk.Label(self.cal_frame, text='', width=3).grid(row=r, column=c, padx=1, pady=1)
+                                else:
+                                    b = ttk.Button(self.cal_frame, text=str(day), width=3, command=lambda d=day: self._select_day(d))
+                                    b.grid(row=r, column=c, padx=1, pady=1)
+
+                    def _prev_month(self):
+                        self.month -= 1
+                        if self.month < 1:
+                            self.month = 12
+                            self.year -= 1
+                        self._draw_calendar()
+
+                    def _next_month(self):
+                        self.month += 1
+                        if self.month > 12:
+                            self.month = 1
+                            self.year += 1
+                        self._draw_calendar()
+
+                    def _select_day(self, day):
+                        try:
+                            d = datetime(self.year, self.month, day).strftime('%Y-%m-%d')
+                            if callable(self.callback):
+                                self.callback(d)
+                        except Exception:
+                            pass
+                        finally:
+                            try:
+                                self.grab_release()
+                            except Exception:
+                                pass
+                            self.destroy()
+
+                cur = entry_widget.get().strip()
+                def _on_date(d):
+                    entry_widget.delete(0, tk.END)
+                    entry_widget.insert(0, d)
+                dp = DatePicker(self, callback=_on_date, initial_date=cur)
+                self.wait_window(dp)
                 
             def on_ok(self):
                 start_date = self.start_entry.get()
                 end_date = self.end_entry.get()
-                
+                # Auto-compute end date if omitted (last day of start month)
+                if start_date and not end_date:
+                    try:
+                        s = datetime.strptime(start_date, '%Y-%m-%d')
+                        # move to first day of next month then step back one day
+                        if s.month == 12:
+                            nxt = datetime(s.year + 1, 1, 1)
+                        else:
+                            nxt = datetime(s.year, s.month + 1, 1)
+                        end_date = (nxt - timedelta(days=1)).strftime('%Y-%m-%d')
+                        self.end_entry.delete(0, tk.END)
+                        self.end_entry.insert(0, end_date)
+                    except Exception:
+                        pass
                 # Basic validation
                 try:
                     start = datetime.strptime(start_date, '%Y-%m-%d')
@@ -579,7 +840,15 @@ class TechFixApp(tk.Tk):
                     pid = self.engine.create_period(name=name, start_date=start_date, end_date=end_date, make_current=True)
                     self.current_period_id = pid
                     messagebox.showinfo("Success", "New accounting period created successfully")
+                    # Refresh period list, select the new period, and load views immediately
                     self._load_periods()
+                    if hasattr(self, 'period_combo'):
+                        self.period_var.set(name)
+                        try:
+                            self.period_combo.set(name)
+                        except Exception:
+                            pass
+                    self._on_period_change()
                 except Exception as e:
                     messagebox.showerror("Error", f"Failed to create period: {str(e)}")
             except Exception as e:
@@ -607,6 +876,115 @@ class TechFixApp(tk.Tk):
             pass
         except Exception as e:
             print(f"Error loading cycle status: {e}")
+
+    def _refresh_cycle_and_views(self) -> None:
+        try:
+            self.engine.refresh_current_period()
+        except Exception:
+            pass
+        try:
+            self._load_cycle_status()
+        except Exception:
+            pass
+        try:
+            self._load_all_views()
+        except Exception:
+            pass
+
+    def _snapshot_txn_form(self) -> Dict[str, str]:
+        snap: Dict[str, str] = {}
+        try:
+            if hasattr(self, 'txn_date'):
+                snap['date'] = self.txn_date.get().strip()
+            if hasattr(self, 'txn_desc'):
+                snap['desc'] = self.txn_desc.get().strip()
+            if hasattr(self, 'debit_acct'):
+                snap['debit_acct'] = self.debit_acct.get().strip()
+            if hasattr(self, 'credit_acct'):
+                snap['credit_acct'] = self.credit_acct.get().strip()
+            if hasattr(self, 'debit_amt'):
+                snap['debit_amt'] = self.debit_amt.get().strip()
+            if hasattr(self, 'credit_amt'):
+                snap['credit_amt'] = self.credit_amt.get().strip()
+            if hasattr(self, 'txn_doc_ref'):
+                snap['doc_ref'] = self.txn_doc_ref.get().strip()
+            if hasattr(self, 'txn_external_ref'):
+                snap['ext_ref'] = self.txn_external_ref.get().strip()
+            if hasattr(self, 'txn_source_type'):
+                snap['source_type'] = self.txn_source_type.get().strip()
+            if hasattr(self, 'txn_memo'):
+                snap['memo'] = self.txn_memo.get('1.0', tk.END).strip()
+            if hasattr(self, 'txn_reverse_date'):
+                snap['reverse_on'] = self.txn_reverse_date.get().strip()
+        except Exception:
+            pass
+        return snap
+
+    def _apply_txn_form(self, snap: Dict[str, str]) -> None:
+        try:
+            if 'date' in snap and hasattr(self, 'txn_date'):
+                self.txn_date.delete(0, tk.END); self.txn_date.insert(0, snap.get('date', ''))
+            if 'desc' in snap and hasattr(self, 'txn_desc'):
+                self.txn_desc.delete(0, tk.END); self.txn_desc.insert(0, snap.get('desc', ''))
+            if 'debit_acct' in snap and hasattr(self, 'debit_acct'):
+                self.debit_acct.set(snap.get('debit_acct', ''))
+            if 'credit_acct' in snap and hasattr(self, 'credit_acct'):
+                self.credit_acct.set(snap.get('credit_acct', ''))
+            if 'debit_amt' in snap and hasattr(self, 'debit_amt'):
+                self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, snap.get('debit_amt', ''))
+            if 'credit_amt' in snap and hasattr(self, 'credit_amt'):
+                self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, snap.get('credit_amt', ''))
+            if 'doc_ref' in snap and hasattr(self, 'txn_doc_ref'):
+                self.txn_doc_ref.delete(0, tk.END); self.txn_doc_ref.insert(0, snap.get('doc_ref', ''))
+            if 'ext_ref' in snap and hasattr(self, 'txn_external_ref'):
+                self.txn_external_ref.delete(0, tk.END); self.txn_external_ref.insert(0, snap.get('ext_ref', ''))
+            if 'source_type' in snap and hasattr(self, 'txn_source_type'):
+                self.txn_source_type.set(snap.get('source_type', ''))
+            if 'memo' in snap and hasattr(self, 'txn_memo'):
+                self.txn_memo.delete('1.0', tk.END); self.txn_memo.insert('1.0', snap.get('memo', ''))
+            if 'reverse_on' in snap and hasattr(self, 'txn_reverse_date'):
+                self.txn_reverse_date.delete(0, tk.END); self.txn_reverse_date.insert(0, snap.get('reverse_on', ''))
+        except Exception:
+            pass
+
+    def _prefill_txn_from_last_entry(self) -> None:
+        try:
+            pid = int(self.current_period_id or 0)
+            if not pid:
+                return
+            row = self.engine.conn.execute(
+                "SELECT id, date, description FROM journal_entries WHERE period_id=? ORDER BY id DESC LIMIT 1",
+                (pid,)
+            ).fetchone()
+            if not row:
+                return
+            try:
+                if hasattr(self, 'txn_date'):
+                    self.txn_date.delete(0, tk.END); self.txn_date.insert(0, row['date'])
+                if hasattr(self, 'txn_desc'):
+                    self.txn_desc.delete(0, tk.END); self.txn_desc.insert(0, row['description'] or '')
+            except Exception:
+                pass
+            lines = self.engine.conn.execute(
+                """
+                SELECT jl.debit, jl.credit, a.code, a.name
+                FROM journal_lines jl
+                JOIN accounts a ON a.id = jl.account_id
+                WHERE jl.entry_id=?
+                ORDER BY jl.id
+                """,
+                (int(row['id']),)
+            ).fetchall()
+            debit_line = next((l for l in lines if (l['debit'] or 0) > 0), None)
+            credit_line = next((l for l in lines if (l['credit'] or 0) > 0), None)
+            if debit_line and hasattr(self, 'debit_acct') and hasattr(self, 'debit_amt'):
+                self.debit_acct.set(f"{debit_line['code']} - {debit_line['name']}")
+                self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, f"{float(debit_line['debit']):.2f}")
+            if credit_line and hasattr(self, 'credit_acct') and hasattr(self, 'credit_amt'):
+                self.credit_acct.set(f"{credit_line['code']} - {credit_line['name']}")
+                self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, f"{float(credit_line['credit']):.2f}")
+        except Exception:
+            pass
 
     def _render_cycle_list(self, rows: List[sqlite3.Row]) -> None:
         return
@@ -669,7 +1047,7 @@ class TechFixApp(tk.Tk):
         ttk.Button(
             toolbar,
             text="Refresh Cycle",
-            command=self._load_cycle_status,
+            command=self._refresh_cycle_and_views,
             style="Techfix.TButton",
         ).pack(side=tk.LEFT, padx=(0, 12))
 
@@ -679,19 +1057,19 @@ class TechFixApp(tk.Tk):
         
         self.light_btn = ttk.Button(
             theme_frame,
-            text="☀️",
+            text="Light",
             command=lambda: self._apply_theme("Light"),
-            style="Techfix.TButton" if self.theme_name == "Light" else "TButton",
-            width=2
+            style="Techfix.Theme.TButton",
+            width=8
         )
         self.light_btn.pack(side=tk.LEFT, padx=(0, 4))
         
         self.dark_btn = ttk.Button(
             theme_frame,
-            text="🌙",
+            text="Dark",
             command=lambda: self._apply_theme("Dark"),
-            style="Techfix.TButton" if self.theme_name == "Dark" else "TButton",
-            width=2
+            style="Techfix.Theme.TButton",
+            width=8
         )
         self.dark_btn.pack(side=tk.LEFT)
 
@@ -701,8 +1079,7 @@ class TechFixApp(tk.Tk):
 
         cycle_top = ttk.Frame(cycle_frame, style="Techfix.Surface.TFrame")
         cycle_top.pack(fill=tk.X, padx=4, pady=(4, 0))
-        # Use explicit background to match surface frame and avoid rendering artifacts
-        tk.Label(cycle_top, text="Track progress through the 10-step cycle.", bg=self.palette.get('surface_bg'), fg=self.palette.get('text_secondary'), font=FONT_BASE).pack(side=tk.LEFT)
+        ttk.Label(cycle_top, text="Track progress through the 10-step cycle.", style="Techfix.TLabel").pack(side=tk.LEFT)
 
         actions = ttk.Frame(cycle_frame, style="Techfix.Surface.TFrame")
         actions.pack(fill=tk.X, padx=4, pady=(4, 4))
@@ -739,13 +1116,18 @@ class TechFixApp(tk.Tk):
             show="headings",
             style="Techfix.Treeview",
             selectmode="browse",
-            height=6,
+            height=10,
         )
+        self.cycle_tree_scroll = ttk.Scrollbar(cycle_frame, orient=tk.VERTICAL, command=self.cycle_tree.yview)
+        self.cycle_tree.configure(yscrollcommand=self.cycle_tree_scroll.set)
         for c in cols:
             width = 80 if c == "step" else 140
+            if c == "updated":
+                width = 160
             self.cycle_tree.heading(c, text=c.title(), anchor="w")
             self.cycle_tree.column(c, width=width if c != "note" else 260, stretch=(c == "note"))
-        self.cycle_tree.pack(fill=tk.X, expand=False, padx=4, pady=(0, 6))
+        self.cycle_tree.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0), pady=(0, 6))
+        self.cycle_tree_scroll.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 4), pady=(0, 6))
 
     
 
@@ -784,7 +1166,7 @@ class TechFixApp(tk.Tk):
         avatar.create_oval(2, 2, 42, 42, fill=self.palette["accent_color"], outline="")
         avatar.create_text(22, 22, text="TF", fill="#ffffff", font="{Segoe UI Semibold} 10")
         avatar.pack(side=tk.LEFT)
-        ttk.Label(profile, text="TechFix", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Label(profile, text="TechFix", style="Techfix.TLabel").pack(side=tk.LEFT, padx=(8, 0))
 
         # Factory to create sidebar nav rows (indicator + button)
         def make_nav(text: str, index: int, emoji: str = ""):
@@ -849,11 +1231,24 @@ class TechFixApp(tk.Tk):
             self.tab_export,
         ]
 
-        # Initially show the first frame
-        try:
-            self._nav_to(0)
-        except Exception:
-            pass
+    def _build_menubar(self) -> None:
+        m = tk.Menu(self)
+        file_menu = tk.Menu(m, tearoff=0)
+        file_menu.add_command(label="Exit", command=self._on_close)
+        m.add_cascade(label="File", menu=file_menu)
+
+        view_menu = tk.Menu(m, tearoff=0)
+        view_menu.add_command(label="Light Theme", command=lambda: self._apply_theme("Light"))
+        view_menu.add_command(label="Dark Theme", command=lambda: self._apply_theme("Dark"))
+        view_menu.add_separator()
+        view_menu.add_command(label="Toggle Fullscreen", command=lambda: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
+        m.add_cascade(label="View", menu=view_menu)
+
+        help_menu = tk.Menu(m, tearoff=0)
+        help_menu.add_command(label="About", command=lambda: messagebox.showinfo("About TechFix", "TechFix Accounting App"))
+        m.add_cascade(label="Help", menu=help_menu)
+
+        self.config(menu=m)
 
     def _update_cycle_step_status(self, status: str) -> None:
         try:
@@ -994,14 +1389,59 @@ class TechFixApp(tk.Tk):
                 self.txn_external_ref.delete(0, tk.END)
             except Exception:
                 pass
-        if hasattr(self, 'txn_description'):
+        if hasattr(self, 'txn_desc'):
             try:
-                self.txn_description.delete('1.0', tk.END)
+                self.txn_desc.delete(0, tk.END)
+            except Exception:
+                pass
+        if hasattr(self, 'txn_memo'):
+            try:
+                self.txn_memo.delete('1.0', tk.END)
             except Exception:
                 pass
         if hasattr(self, 'txn_attachment_path'):
             try:
                 self.txn_attachment_path.set('')
+            except Exception:
+                pass
+        if hasattr(self, 'txn_source_type'):
+            try:
+                self.txn_source_type.set('')
+            except Exception:
+                pass
+        if hasattr(self, 'debit_acct'):
+            try:
+                self.debit_acct.set('')
+            except Exception:
+                pass
+        if hasattr(self, 'credit_acct'):
+            try:
+                self.credit_acct.set('')
+            except Exception:
+                pass
+        if hasattr(self, 'debit_amt'):
+            try:
+                self.debit_amt.delete(0, tk.END)
+            except Exception:
+                pass
+        if hasattr(self, 'credit_amt'):
+            try:
+                self.credit_amt.delete(0, tk.END)
+            except Exception:
+                pass
+        if hasattr(self, 'txn_reverse_date'):
+            try:
+                self.txn_reverse_date.delete(0, tk.END)
+            except Exception:
+                pass
+        if hasattr(self, 'txn_is_adjust'):
+            try:
+                self.txn_is_adjust.set(0)
+            except Exception:
+                pass
+        if hasattr(self, 'txn_schedule_reverse'):
+            try:
+                self.txn_schedule_reverse.set(0)
             except Exception:
                 pass
             
@@ -1207,7 +1647,7 @@ class TechFixApp(tk.Tk):
         main_container = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         main_container.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
         main_container.columnconfigure(0, weight=1)
-        main_container.rowconfigure(1, weight=1)  # Give more weight to the table
+        main_container.rowconfigure(1, weight=1, minsize=280)  # ensure recent list has minimum height
         
         # Form frame with fixed height
         form = ttk.LabelFrame(main_container, text="New Transaction", style="Techfix.TLabelframe")
@@ -1329,9 +1769,11 @@ class TechFixApp(tk.Tk):
             height=3,
             bg=self.palette["surface_bg"],
             fg=self.palette["text_primary"],
-            highlightthickness=0,
-            highlightbackground=self.palette.get("surface_bg", "#ffffff"),
-            relief=tk.FLAT,
+            bd=1,
+            relief=tk.SOLID,
+            highlightthickness=1,
+            highlightbackground=self.palette.get("entry_border", "#d8dee9"),
+            highlightcolor=self.palette.get("accent_color", "#2563eb"),
             wrap=tk.WORD,
             font=("Segoe UI", 9),
             padx=4,
@@ -1445,7 +1887,7 @@ class TechFixApp(tk.Tk):
         # Column sizing - description expands
         self.txn_recent_tree.column("date", width=100, anchor=tk.W, stretch=False)
         self.txn_recent_tree.column("reference", width=80, anchor=tk.W, stretch=False)
-        self.txn_recent_tree.column("description", width=400, anchor=tk.W, stretch=True)
+        self.txn_recent_tree.column("description", width=520, anchor=tk.W, stretch=True)
         self.txn_recent_tree.column("debit", width=100, anchor=tk.E, stretch=False)
         self.txn_recent_tree.column("credit", width=100, anchor=tk.E, stretch=False)
         self.txn_recent_tree.column("account", width=220, anchor=tk.W, stretch=False)
@@ -1494,6 +1936,10 @@ class TechFixApp(tk.Tk):
         ttk.Label(f, text="Date:").grid(row=0, column=0, sticky="e", padx=2, pady=2)
         self.adjust_date = ttk.Entry(f, style="Techfix.TEntry")
         self.adjust_date.grid(row=0, column=1, sticky="we", padx=2, pady=2)
+        btns = ttk.Frame(f, style="Techfix.Surface.TFrame")
+        btns.grid(row=0, column=2, sticky="ew", padx=2, pady=2)
+        ttk.Button(btns, text="📅", command=self._pick_adjust_date, style="Techfix.TButton", width=3).pack(side=tk.LEFT, padx=(0,4))
+        ttk.Button(btns, text="Today", command=lambda: self._set_entry_today(self.adjust_date), style="Techfix.TButton").pack(side=tk.LEFT)
 
         # Adjustment controls in a grid
         row = 1
@@ -1643,8 +2089,9 @@ class TechFixApp(tk.Tk):
             return
 
         try:
+            date_str = (self.adjust_date.get().strip() if hasattr(self, 'adjust_date') else '') or datetime.utcnow().date().isoformat()
             entry_id = db.insert_journal_entry(
-                date=datetime.utcnow().date().isoformat(),
+                date=date_str,
                 description=f"Adjust supplies: used {amt:.2f}",
                 lines=[(supplies_exp['id'], amt, 0.0), (supplies['id'], 0.0, amt)],
                 is_adjusting=1,
@@ -1674,8 +2121,9 @@ class TechFixApp(tk.Tk):
             return
 
         try:
+            date_str = (self.adjust_date.get().strip() if hasattr(self, 'adjust_date') else '') or datetime.utcnow().date().isoformat()
             entry_id = db.insert_journal_entry(
-                date=datetime.utcnow().date().isoformat(),
+                date=date_str,
                 description=f"Amortize prepaid rent: {amt:.2f}",
                 lines=[(rent_exp['id'], amt, 0.0), (prepaid['id'], 0.0, amt)],
                 is_adjusting=1,
@@ -1705,8 +2153,9 @@ class TechFixApp(tk.Tk):
             return
 
         try:
+            date_str = (self.adjust_date.get().strip() if hasattr(self, 'adjust_date') else '') or datetime.utcnow().date().isoformat()
             entry_id = db.insert_journal_entry(
-                date=datetime.utcnow().date().isoformat(),
+                date=date_str,
                 description=f"Record depreciation: {amt:.2f}",
                 lines=[(depr_exp['id'], amt, 0.0), (acc_depr['id'], 0.0, amt)],
                 is_adjusting=1,
@@ -1716,6 +2165,108 @@ class TechFixApp(tk.Tk):
             self._refresh_after_post()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create depreciation entry: {e}")
+
+    def _pick_adjust_date(self) -> None:
+        try:
+            class DatePicker(tk.Toplevel):
+                def __init__(self, parent, callback=None, initial_date=None):
+                    super().__init__(parent)
+                    self.transient(parent)
+                    self.grab_set()
+                    self.callback = callback
+                    self.title("Pick Date")
+                    self.resizable(False, False)
+
+                    today = datetime.now().date()
+                    if initial_date:
+                        try:
+                            dt = datetime.strptime(initial_date, '%Y-%m-%d').date()
+                        except Exception:
+                            dt = today
+                    else:
+                        dt = today
+
+                    self.year = dt.year
+                    self.month = dt.month
+
+                    header = ttk.Frame(self)
+                    header.pack(fill=tk.X, padx=8, pady=6)
+                    ttk.Button(header, text="◀", width=3, command=self._prev_month).pack(side=tk.LEFT)
+                    self.title_lbl = ttk.Label(header, text="", anchor=tk.CENTER)
+                    self.title_lbl.pack(side=tk.LEFT, expand=True)
+                    ttk.Button(header, text="▶", width=3, command=self._next_month).pack(side=tk.RIGHT)
+
+                    self.cal_frame = ttk.Frame(self)
+                    self.cal_frame.pack(padx=8, pady=(0,8))
+                    self._draw_calendar()
+
+                def _draw_calendar(self):
+                    for child in self.cal_frame.winfo_children():
+                        child.destroy()
+                    self.title_lbl.config(text=f"{calendar.month_name[self.month]} {self.year}")
+                    wdays = ['Mo','Tu','We','Th','Fr','Sa','Su']
+                    for c, wd in enumerate(wdays):
+                        ttk.Label(self.cal_frame, text=wd, width=3, anchor='center').grid(row=0, column=c)
+                    m = calendar.monthcalendar(self.year, self.month)
+                    for r, week in enumerate(m, start=1):
+                        for c, day in enumerate(week):
+                            if day == 0:
+                                ttk.Label(self.cal_frame, text='', width=3).grid(row=r, column=c, padx=1, pady=1)
+                            else:
+                                b = ttk.Button(self.cal_frame, text=str(day), width=3, command=lambda d=day: self._select_day(d))
+                                b.grid(row=r, column=c, padx=1, pady=1)
+
+                def _prev_month(self):
+                    self.month -= 1
+                    if self.month < 1:
+                        self.month = 12
+                        self.year -= 1
+                    self._draw_calendar()
+
+                def _next_month(self):
+                    self.month += 1
+                    if self.month > 12:
+                        self.month = 1
+                        self.year += 1
+                    self._draw_calendar()
+
+                def _select_day(self, day):
+                    try:
+                        d = datetime(self.year, self.month, day).strftime('%Y-%m-%d')
+                        if callable(self.callback):
+                            self.callback(d)
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            self.grab_release()
+                        except Exception:
+                            pass
+                        self.destroy()
+
+            def _on_pick(d):
+                try:
+                    self.adjust_date.delete(0, tk.END)
+                    self.adjust_date.insert(0, d)
+                except Exception:
+                    pass
+
+            cur = None
+            try:
+                cur = self.adjust_date.get().strip()
+            except Exception:
+                cur = None
+            dp = DatePicker(self, callback=_on_pick, initial_date=cur)
+            self.wait_window(dp)
+        except Exception:
+            pass
+
+    def _set_entry_today(self, entry: ttk.Entry) -> None:
+        try:
+            entry.delete(0, tk.END)
+            entry.insert(0, datetime.utcnow().date().isoformat())
+        except Exception:
+            pass
 
     def _queue_adjustment_request(self) -> None:
         """Add an adjustment request to the queue."""
@@ -1804,6 +2355,17 @@ class TechFixApp(tk.Tk):
             style="Techfix.TCombobox"
         )
         self.journal_account_filter.pack(side=tk.LEFT, padx=4)
+        try:
+            accs = db.get_accounts(conn=self.engine.conn)
+            names = ["All"] + [f"{a['code']} - {a['name']}" for a in accs]
+            self.journal_account_filter['values'] = names
+            try:
+                self.journal_account_filter.set("All")
+            except Exception:
+                pass
+        except Exception:
+            pass
+        self.journal_account_filter.bind("<<ComboboxSelected>>", lambda e: self._load_journal_entries())
         
         # Create the treeview for journal entries
         columns = ("date", "reference", "description", "debit", "credit", "account")
@@ -1848,7 +2410,53 @@ class TechFixApp(tk.Tk):
         for item in self.journal_tree.get_children():
             self.journal_tree.delete(item)
         try:
-            rows = db.fetch_journal(self.engine.conn)
+            rows = db.fetch_journal(period_id=self.engine.current_period_id, conn=self.engine.conn)
+            # Optional account filtering from dropdown
+            sel = ''
+            try:
+                sel = self.journal_account_filter.get().strip()
+            except Exception:
+                sel = ''
+            if sel and sel.lower() != 'all':
+                try:
+                    code, name_match = sel.split(' - ', 1)
+                except Exception:
+                    code, name_match = sel, ''
+                rows = [r for r in rows if ((('code' in r.keys()) and r['code'] == code) or r['name'] == name_match)]
+            # Optional date range filter (from/to)
+            from_s = to_s = ''
+            try:
+                from_s = self.journal_date_from.get().strip()
+            except Exception:
+                from_s = ''
+            try:
+                to_s = self.journal_date_to.get().strip()
+            except Exception:
+                to_s = ''
+            if from_s or to_s:
+                from_dt = None
+                to_dt = None
+                try:
+                    if from_s:
+                        from_dt = datetime.strptime(from_s, '%Y-%m-%d').date()
+                except Exception:
+                    from_dt = None
+                try:
+                    if to_s:
+                        to_dt = datetime.strptime(to_s, '%Y-%m-%d').date()
+                except Exception:
+                    to_dt = None
+                def _in_range(dstr: str) -> bool:
+                    try:
+                        d = datetime.strptime(dstr, '%Y-%m-%d').date()
+                    except Exception:
+                        return False
+                    if from_dt and d < from_dt:
+                        return False
+                    if to_dt and d > to_dt:
+                        return False
+                    return True
+                rows = [r for r in rows if _in_range(r['date'])]
             current_entry = None
             total_debit = 0.0
             total_credit = 0.0
@@ -1885,25 +2493,73 @@ class TechFixApp(tk.Tk):
             messagebox.showerror("Error", f"Failed to load journal entries: {str(e)}")
 
     def _load_recent_transactions(self, limit: int = 50) -> None:
-        """Populate the Recent Transactions tree with the most recent journal rows."""
+        """Populate the Recent Transactions tree with the most recent entries, including drafts without lines."""
         try:
-            # Clear existing
             if hasattr(self, 'txn_recent_tree'):
                 for it in self.txn_recent_tree.get_children():
                     self.txn_recent_tree.delete(it)
-            rows = db.fetch_journal(self.engine.conn)
-            if not rows:
-                return
-            # show last `limit` entry lines
-            rows = list(rows)[-limit:]
-            for r in rows:
-                date = r.get('date') if isinstance(r, dict) or hasattr(r, 'get') else r['date']
-                ref = r.get('entry_id') if 'entry_id' in r.keys() else ''
-                desc = r.get('description') if 'description' in r.keys() else ''
-                debit = float(r.get('debit') or 0) if 'debit' in r.keys() else 0.0
-                credit = float(r.get('credit') or 0) if 'credit' in r.keys() else 0.0
-                acct = r.get('name') if 'name' in r.keys() else ''
-                self.txn_recent_tree.insert('', 'end', values=(date, ref, desc, f"{debit:,.2f}" if debit else "", f"{credit:,.2f}" if credit else "", acct))
+            conn = self.engine.conn
+            pid = self.engine.current_period_id
+            clause = "WHERE je.period_id = ?" if pid else ""
+            params = ([int(pid)] if pid else []) + [limit]
+            sql = (
+                """
+                SELECT je.id AS entry_id, je.date AS date, je.description AS description, je.status AS status
+                FROM journal_entries je
+                """
+                + (clause or "")
+                + """
+                ORDER BY date(je.date) DESC, je.id DESC
+                LIMIT ?
+                """
+            )
+            cur = conn.execute(sql, params)
+            entries = cur.fetchall()
+            for e in entries:
+                eid = e['entry_id'] if 'entry_id' in e.keys() else e['id']
+                date = e['date'] if 'date' in e.keys() else ''
+                desc = e['description'] if 'description' in e.keys() else ''
+                # Aggregate debit/credit and pick a representative account name (first line)
+                try:
+                    rsum = conn.execute(
+                        """
+                        SELECT COALESCE(SUM(jl.debit),0) AS debit, COALESCE(SUM(jl.credit),0) AS credit
+                        FROM journal_lines jl
+                        WHERE jl.entry_id=?
+                        """,
+                        (eid,)
+                    ).fetchone()
+                    debit = float(rsum['debit'] if 'debit' in rsum.keys() else 0) if rsum else 0.0
+                    credit = float(rsum['credit'] if 'credit' in rsum.keys() else 0) if rsum else 0.0
+                    racct = conn.execute(
+                        """
+                        SELECT a.name
+                        FROM journal_lines jl
+                        JOIN accounts a ON a.id = jl.account_id
+                        WHERE jl.entry_id=?
+                        ORDER BY jl.id
+                        LIMIT 1
+                        """,
+                        (eid,)
+                    ).fetchone()
+                    acct = (racct['name'] if racct and 'name' in racct.keys() else '')
+                except Exception:
+                    debit = 0.0
+                    credit = 0.0
+                    acct = ''
+                self.txn_recent_tree.insert(
+                    '', 'end',
+                    values=(date, eid, desc, f"{debit:,.2f}" if debit else '', f"{credit:,.2f}" if credit else '', acct),
+                    tags=('row',)
+                )
+            try:
+                self.txn_recent_tree.tag_configure('row', background=self.palette.get('surface_bg', '#ffffff'))
+            except Exception:
+                pass
+            try:
+                self.txn_recent_tree.yview_moveto(0)
+            except Exception:
+                pass
         except Exception:
             pass
     
@@ -1998,6 +2654,16 @@ class TechFixApp(tk.Tk):
         )
         self.ledger_account_filter.pack(side=tk.LEFT, padx=4)
         self.ledger_account_filter.bind("<<ComboboxSelected>>", lambda e: self._load_ledger_entries())
+        try:
+            accs = db.get_accounts(conn=self.engine.conn)
+            names = ["All"] + [f"{a['code']} - {a['name']}" for a in accs]
+            self.ledger_account_filter['values'] = names
+            try:
+                self.ledger_account_filter.set("All")
+            except Exception:
+                pass
+        except Exception:
+            pass
         
         # Create the treeview for ledger entries
         columns = ("account", "debit", "credit", "balance")
@@ -2039,11 +2705,32 @@ class TechFixApp(tk.Tk):
         for item in self.ledger_tree.get_children():
             self.ledger_tree.delete(item)
         try:
-            rows = db.compute_trial_balance(conn=self.engine.conn)
+            rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
+            sel = ''
+            try:
+                sel = self.ledger_account_filter.get().strip()
+            except Exception:
+                sel = ''
+            if sel and sel.lower() != 'all':
+                try:
+                    code, name_match = sel.split(' - ', 1)
+                except Exception:
+                    code, name_match = sel, ''
+                rows = [r for r in rows if (('code' in r.keys() and r['code'] == code) or r['name'] == name_match)]
+            # Hide accounts with zero activity in current period
+            def _has_activity(r):
+                d, c = self._balance_to_columns(r)
+                return bool((d or 0) != 0 or (c or 0) != 0)
+            rows = [r for r in rows if _has_activity(r)]
             total_debit = 0.0
             total_credit = 0.0
             for r in rows:
                 name = r['name']
+                try:
+                    code = r['code'] if 'code' in r.keys() else ''
+                    name = f"{code} - {name}" if code else name
+                except Exception:
+                    pass
                 d, c = self._balance_to_columns(r)
                 try:
                     total_debit += float(d or 0)
@@ -2081,6 +2768,48 @@ class TechFixApp(tk.Tk):
             is_adjust = bool(self.txn_is_adjust.get()) if hasattr(self, 'txn_is_adjust') else False
             schedule = bool(self.txn_schedule_reverse.get()) if hasattr(self, 'txn_schedule_reverse') else False
             reverse_on = self.txn_reverse_date.get().strip() if schedule and hasattr(self, 'txn_reverse_date') else None
+            if status == 'draft':
+                if not date:
+                    date = datetime.now().strftime('%Y-%m-%d')
+                if not desc:
+                    desc = 'Draft'
+                lines: list[JournalLine] = []
+                try:
+                    if debit_acct and credit_acct and debit_amt_txt and credit_amt_txt:
+                        debit_amt = float(debit_amt_txt)
+                        credit_amt = float(credit_amt_txt)
+                        if round(debit_amt - credit_amt, 2) == 0:
+                            did = self.account_id_by_display.get(debit_acct)
+                            cid = self.account_id_by_display.get(credit_acct)
+                            if did and cid:
+                                lines = [JournalLine(account_id=did, debit=debit_amt), JournalLine(account_id=cid, credit=credit_amt)]
+                except Exception:
+                    lines = []
+                entry_id = self.engine.record_entry(
+                    date,
+                    desc,
+                    lines,
+                    is_adjusting=is_adjust,
+                    document_ref=doc_ref or None,
+                    external_ref=ext_ref or None,
+                    memo=memo or None,
+                    source_type=source_type or None,
+                    status=status,
+                    attachments=[('document', attach)] if attach else None,
+                    schedule_reverse_on=reverse_on or None,
+                )
+                messagebox.showinfo('Saved', f'Draft {entry_id} saved')
+                try:
+                    if self.current_period_id:
+                        self.period_form_cache[int(self.current_period_id)] = self._snapshot_txn_form()
+                except Exception:
+                    pass
+                self._clear_transaction_form()
+                try:
+                    self._load_recent_transactions()
+                except Exception:
+                    pass
+                return
             if not date or not desc:
                 messagebox.showerror('Error', 'Date and description are required')
                 return
@@ -2109,6 +2838,11 @@ class TechFixApp(tk.Tk):
                 schedule_reverse_on=reverse_on or None,
             )
             messagebox.showinfo('Recorded', f'Journal entry {entry_id} recorded')
+            try:
+                if self.current_period_id:
+                    self.period_form_cache[int(self.current_period_id)] = self._snapshot_txn_form()
+            except Exception:
+                pass
             self._refresh_after_post()
             self._clear_transaction_form()
         except Exception as e:
@@ -2143,11 +2877,11 @@ class TechFixApp(tk.Tk):
         date_frame = ttk.Frame(controls, style="Techfix.Surface.TFrame")
         date_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        ttk.Label(date_frame, text="From:", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(date_frame, text="From (YYYY-MM-DD):", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 4))
         self.fs_date_from = ttk.Entry(date_frame, width=12, style="Techfix.TEntry")
         self.fs_date_from.pack(side=tk.LEFT, padx=(0, 12))
         
-        ttk.Label(date_frame, text="To:", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(date_frame, text="To (YYYY-MM-DD):", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 4))
         self.fs_date_to = ttk.Entry(date_frame, width=12, style="Techfix.TEntry")
         self.fs_date_to.pack(side=tk.LEFT)
         
@@ -2215,6 +2949,8 @@ class TechFixApp(tk.Tk):
         ttk.Button(controls, text="Refresh", command=self._load_trial_balances, style="Techfix.TButton").pack(side=tk.LEFT)
         # Export trial balance to Excel
         ttk.Button(controls, text="Export to Excel", command=lambda: self._export_tree_to_excel(self.trial_tree, default_name=f"trial_balance_{self.tb_date.get() if hasattr(self, 'tb_date') else ''}.xlsx"), style="Techfix.TButton").pack(side=tk.LEFT, padx=(6,0))
+        self.tb_status_label = ttk.Label(controls, text="Unadjusted Trial Balance", style="Techfix.AppBar.TLabel")
+        self.tb_status_label.pack(side=tk.RIGHT)
 
         cols = ("code", "name", "debit", "credit")
         self.trial_tree = ttk.Treeview(frame, columns=cols, show="headings", style="Techfix.Treeview")
@@ -2248,7 +2984,21 @@ class TechFixApp(tk.Tk):
                 d = self.tb_date.get().strip()
                 as_of = d or None
 
-            rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=True, conn=self.engine.conn)
+            rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=True, period_id=self.engine.current_period_id, conn=self.engine.conn)
+            try:
+                statuses = self.engine.get_cycle_status()
+                step5 = next((r for r in statuses if int(r['step']) == 5), None)
+                if step5 and (step5['status'] == 'completed'):
+                    self.tb_status_label.configure(text="Adjusted Trial Balance")
+                else:
+                    self.tb_status_label.configure(text="Unadjusted Trial Balance")
+            except Exception:
+                pass
+            # Show only accounts with non-zero balance/activity for the active period
+            def _has_activity(r: dict) -> bool:
+                dcol, ccol = self._balance_to_columns(r)
+                return bool((dcol or 0) != 0 or (ccol or 0) != 0)
+            rows = [r for r in rows if _has_activity(r)]
 
             for r in rows:
                 dcol, ccol = self._balance_to_columns(r)
@@ -2539,19 +3289,19 @@ class TechFixApp(tk.Tk):
             # Format the income statement
             content = []
             content.append(('Income Statement\n', 'header'))
-            content.append((f'As of {as_of_date or "current date"}\n\n', 'subheader'))
+            content.append((f'For the period ended {as_of_date or "current date"}\n\n', 'subheader'))
             
             # Add revenues
             content.append(('Revenues\n', 'section'))
             for name, amount in revenue:
-                content.append((f'{name}: {amount:,.2f}\n', None))
+                content.append((f'{name}: {fmt(amount)}\n', None))
             
             content.append((f'\nTotal Revenue: {fmt(total_revenue)}\n\n', 'total'))
             
             # Add expenses
             content.append(('Expenses\n', 'section'))
             for name, amount in expenses:
-                content.append((f'{name}: {amount:,.2f}\n', None))
+                content.append((f'{name}: {fmt(amount)}\n', None))
             
             content.append((f'\nTotal Expenses: {fmt(total_expenses)}\n\n', 'total'))
             content.append((f'Net Income: {fmt(net_income)}\n', 'net'))
@@ -2690,7 +3440,15 @@ class TechFixApp(tk.Tk):
         """
         try:
             date_to = as_of_date or (self.fs_date_to.get().strip() if hasattr(self, 'fs_date_to') else None)
-            rows = db.compute_trial_balance(up_to_date=date_to, include_temporary=True, conn=self.engine.conn)
+            inc_temp_bs = True
+            try:
+                statuses = self.engine.get_cycle_status()
+                step8 = next((r for r in statuses if int(r['step']) == 8), None)
+                if step8 and (step8['status'] == 'completed'):
+                    inc_temp_bs = False
+            except Exception:
+                pass
+            rows = db.compute_trial_balance(up_to_date=date_to, include_temporary=inc_temp_bs, period_id=self.engine.current_period_id, conn=self.engine.conn)
             # Re-generate text widgets only (these functions write to Text widgets)
             try:
                 self._generate_income_statement(rows, date_to)
@@ -2717,15 +3475,31 @@ class TechFixApp(tk.Tk):
             self.cash_flow_text.update_text("")
             
             # Get trial balance data for the specified date range
-            rows = db.compute_trial_balance(
-                up_to_date=date_to,  # Only up_to_date parameter is supported
+            rows_is = db.compute_trial_balance(
+                from_date=date_from,
+                up_to_date=date_to,
                 include_temporary=True,
+                period_id=self.engine.current_period_id,
+                conn=self.engine.conn
+            )
+            inc_temp_bs = True
+            try:
+                statuses = self.engine.get_cycle_status()
+                step8 = next((r for r in statuses if int(r['step']) == 8), None)
+                if step8 and (step8['status'] == 'completed'):
+                    inc_temp_bs = False
+            except Exception:
+                pass
+            rows_bs = db.compute_trial_balance(
+                up_to_date=date_to,
+                include_temporary=inc_temp_bs,
+                period_id=self.engine.current_period_id,
                 conn=self.engine.conn
             )
             
             # Process data for financial statements
-            self._generate_income_statement(rows, date_to)
-            self._generate_balance_sheet(rows, date_to)
+            self._generate_income_statement(rows_is, date_to)
+            self._generate_balance_sheet(rows_bs, date_to)
             # Generate cash flow using backend engine and render it
             try:
                 # Determine safe start/end for cash flow
@@ -2845,6 +3619,7 @@ class TechFixApp(tk.Tk):
             self.closing_preview_tree.heading(c, text=c.title(), anchor="w")
             self.closing_preview_tree.column(c, width=width, stretch=True)
         self.closing_preview_tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self._load_closing_preview()
 
         log_frame = ttk.Labelframe(frame, text="Closing Log", style="Techfix.TLabelframe")
         log_frame.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
@@ -2860,13 +3635,23 @@ class TechFixApp(tk.Tk):
             relief=tk.FLAT,
         )
         self.close_log.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self._load_closing_log()
 
     def _do_close(self) -> None:
         date = self.close_date.get().strip()
+        try:
+            if not date:
+                date = datetime.utcnow().date().isoformat()
+            else:
+                datetime.strptime(date, '%Y-%m-%d')
+        except Exception:
+            messagebox.showerror('Error', 'Enter closing date as YYYY-MM-DD')
+            return
         ids = self.engine.make_closing_entries(date)
         self.close_log.insert(tk.END, f"Created closing entries: {ids}\n")
         self._refresh_after_post()
         self._load_closing_preview()
+        self._load_closing_log()
 
     def _load_closing_preview(self) -> None:
         """Populate the Closing Entry Preview with amounts that would be posted."""
@@ -2881,8 +3666,9 @@ class TechFixApp(tk.Tk):
             pid = self.engine.current_period_id
             conn = self.engine.conn
             cur = conn.cursor()
+            inserted = False
 
-            # Revenues to close (credit balances)
+            # Revenues to close
             cur.execute(
                 """
                 SELECT a.code, a.name, ROUND(COALESCE(SUM(jl.credit) - SUM(jl.debit),0),2) AS balance
@@ -2891,15 +3677,17 @@ class TechFixApp(tk.Tk):
                 LEFT JOIN journal_entries je ON je.id = jl.entry_id
                 WHERE a.type = 'Revenue' AND a.is_active=1 AND je.period_id = ?
                 GROUP BY a.id, a.code, a.name
-                HAVING balance > 0.005
+                HAVING ABS(balance) > 0.005
                 """,
                 (pid,)
             )
             for r in cur.fetchall():
                 amt = float(r['balance'])
-                self.closing_preview_tree.insert('', 'end', values=(r['code'], r['name'], 'Close revenue → Capital (debit)', f"{amt:,.2f}"))
+                action = 'Close revenue → Capital (credit)' if amt >= 0 else 'Close revenue (reverse-sign) → Capital (debit)'
+                self.closing_preview_tree.insert('', 'end', values=(r['code'], r['name'], action, f"{abs(amt):,.2f}"))
+                inserted = True
 
-            # Expenses to close (debit balances)
+            # Expenses to close
             cur.execute(
                 """
                 SELECT a.code, a.name, ROUND(COALESCE(SUM(jl.debit) - SUM(jl.credit),0),2) AS balance
@@ -2908,13 +3696,15 @@ class TechFixApp(tk.Tk):
                 LEFT JOIN journal_entries je ON je.id = jl.entry_id
                 WHERE a.type = 'Expense' AND a.is_active=1 AND je.period_id = ?
                 GROUP BY a.id, a.code, a.name
-                HAVING balance > 0.005
+                HAVING ABS(balance) > 0.005
                 """,
                 (pid,)
             )
             for e in cur.fetchall():
                 amt = float(e['balance'])
-                self.closing_preview_tree.insert('', 'end', values=(e['code'], e['name'], 'Close expense → Capital (credit)', f"{amt:,.2f}"))
+                action = 'Close expense → Capital (debit)' if amt > 0 else 'Close expense (reverse-sign) → Capital (credit)'
+                self.closing_preview_tree.insert('', 'end', values=(e['code'], e['name'], action, f"{abs(amt):,.2f}"))
+                inserted = True
 
             # Owner's Drawings (close to capital)
             drawings = db.get_account_by_name("Owner's Drawings", conn)
@@ -2930,10 +3720,36 @@ class TechFixApp(tk.Tk):
                 )
                 bal = float(cur.fetchone()[0] or 0)
                 if bal > 0.005:
-                    self.closing_preview_tree.insert('', 'end', values=(drawings['code'], "Owner's Drawings", 'Close drawings → Capital (credit)', f"{bal:,.2f}"))
+                    self.closing_preview_tree.insert('', 'end', values=(drawings['code'], "Owner's Drawings", 'Close drawings → Capital (debit)', f"{bal:,.2f}"))
+                    inserted = True
+
+            if not inserted:
+                self.closing_preview_tree.insert('', 'end', values=("", "", "No amounts to close", ""))
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load closing preview: {e}")
+
+    def _load_closing_log(self) -> None:
+        try:
+            if hasattr(self, 'close_log'):
+                self.close_log.delete('1.0', tk.END)
+            rows = db.list_audit_log(limit=200, conn=self.engine.conn)
+            for r in rows:
+                action = r['action']
+                det = r['details']
+                try:
+                    d = json.loads(det) if det else {}
+                except Exception:
+                    d = {}
+                if action == 'journal_entry_created' and bool(d.get('is_closing')) and (not self.engine.current_period_id or int(d.get('period_id', 0) or 0) == int(self.engine.current_period_id)):
+                    ts = r['timestamp']
+                    eid = d.get('entry_id')
+                    desc = d.get('description')
+                    self.close_log.insert(tk.END, f"[{ts}] entry {eid} {desc}\n")
+            if hasattr(self, 'close_log'):
+                self.close_log.see(tk.END)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load closing log: {e}")
 
     # --------------------- Post-Closing Tab ---------------------
     def _build_postclosing_tab(self) -> None:
@@ -2964,7 +3780,7 @@ class TechFixApp(tk.Tk):
         ttk.Button(schedule_controls, text="Complete Reversing Schedule", command=self._complete_reversing_schedule_action, style="Techfix.TButton").pack(
             side=tk.LEFT, padx=8
         )
-        rcols = ("id", "original_entry", "reverse_on", "status")
+        rcols = ("id", "original_entry", "reverse_on", "reversal_entry", "status")
         self.reversing_tree = ttk.Treeview(schedule, columns=rcols, show="headings", style="Techfix.Treeview", height=5)
         for c in rcols:
             width = 80 if c == "id" else 140
@@ -2981,15 +3797,17 @@ class TechFixApp(tk.Tk):
         try:
             rows = self.engine.list_reversing_queue()
             for r in rows:
-                self.reversing_tree.insert('', 'end', values=(r['id'], r['original_entry_id'], r['reverse_on'], r['status']))
+                self.reversing_tree.insert('', 'end', values=(r['id'], r['original_entry_id'], r['reverse_on'], r.get('reversed_entry_id') if 'reversed_entry_id' in r.keys() else '', r['status']))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load reversing queue: {e}")
 
     def _complete_reversing_schedule_action(self) -> None:
         try:
-            self.engine.set_cycle_step_status(10, "completed", "Reversing entries scheduled")
+            as_of = (self.pctb_date.get().strip() if hasattr(self, 'pctb_date') else '') or None
+            created = self.engine.process_reversing_schedule(as_of)
+            self._load_reversing_queue()
             self._load_cycle_status()
-            messagebox.showinfo("Completed", "Reversing entry schedule marked completed")
+            messagebox.showinfo("Completed", f"Posted {len(created)} reversing entr(ies)")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to complete reversing schedule: {e}")
 
@@ -3020,7 +3838,7 @@ class TechFixApp(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel","*.xlsx")])
         if not path:
             return
-        rows = db.fetch_journal(self.engine.conn)
+        rows = db.fetch_journal(period_id=self.engine.current_period_id, conn=self.engine.conn)
         headers = ["date","entry_id","description","code","name","debit","credit"]
         try:
             from openpyxl import Workbook
@@ -3072,7 +3890,7 @@ class TechFixApp(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel","*.xlsx")])
         if not path:
             return
-        rows = db.fetch_ledger(self.engine.conn)
+        rows = db.fetch_ledger(period_id=self.engine.current_period_id, conn=self.engine.conn)
         headers = ["code","name","date","description","debit","credit"]
         try:
             from openpyxl import Workbook
@@ -3121,7 +3939,7 @@ class TechFixApp(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel","*.xlsx")])
         if not path:
             return
-        rows = db.compute_trial_balance(conn=self.engine.conn)
+        rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
         # derive debit/credit
         headers = ["code","name","debit","credit"]
         try:
@@ -3440,11 +4258,19 @@ class TechFixApp(tk.Tk):
             self._load_ledger_entries()
         if hasattr(self, 'trial_tree'):
             self._load_trial_balances()
+        try:
+            self._load_postclosing_tb()
+        except Exception:
+            pass
         # Load financials without changing cycle step statuses during startup
         self._load_financials(mark_status=False)
         self._load_adjustments()
         self._load_closing_preview()
         self._load_reversing_queue()
+        try:
+            self._load_recent_transactions()
+        except Exception:
+            pass
 
     def _refresh_after_post(self) -> None:
         self._load_journal_entries()
@@ -3455,6 +4281,10 @@ class TechFixApp(tk.Tk):
         self._load_adjustments()
         self._load_closing_preview()
         self._load_reversing_queue()
+        try:
+            self._load_recent_transactions()
+        except Exception:
+            pass
 
     def _load_postclosing_tb(self) -> None:
         if not hasattr(self, 'pctb_tree'):
@@ -3463,7 +4293,12 @@ class TechFixApp(tk.Tk):
             self.pctb_tree.delete(item)
         try:
             as_of = (self.pctb_date.get().strip() if hasattr(self, 'pctb_date') else '') or None
-            rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=False, conn=self.engine.conn)
+            rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=False, period_id=self.engine.current_period_id, conn=self.engine.conn)
+            # Only show accounts with non-zero balances in post-closing snapshot
+            def _has_activity_pc(r: dict) -> bool:
+                d, c = self._balance_to_columns(r)
+                return bool((d or 0) != 0 or (c or 0) != 0)
+            rows = [r for r in rows if _has_activity_pc(r)]
             for r in rows:
                 code = r['code'] if 'code' in r.keys() else ''
                 name = r['name'] if 'name' in r.keys() else ''
@@ -3475,7 +4310,7 @@ class TechFixApp(tk.Tk):
     def _complete_postclosing_tb_action(self) -> None:
         try:
             as_of = (self.pctb_date.get().strip() if hasattr(self, 'pctb_date') else '') or None
-            rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=False, conn=self.engine.conn)
+            rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=False, period_id=self.engine.current_period_id, conn=self.engine.conn)
             self._load_postclosing_tb()
             self.engine.capture_trial_balance_snapshot("post_closing", as_of or "latest", rows)
             self.engine.set_cycle_step_status(9, "completed", f"Post-closing TB prepared as of {as_of or 'latest'}")

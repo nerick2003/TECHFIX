@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "techfix"
+version = "0.1.0"
+description = "TechFix desktop accounting app"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["openpyxl>=3.1.0"]
+
+[project.scripts]
+techfix = "techfix.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "TECHFIX/TECHFIX"}
+
+[tool.setuptools.packages.find]
+where = ["TECHFIX/TECHFIX"]
