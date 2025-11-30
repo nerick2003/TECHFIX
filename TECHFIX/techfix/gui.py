@@ -1799,29 +1799,41 @@ class TechFixApp(tk.Tk):
             messagebox.showerror("Error", f"Failed to reset cycle steps: {e}")
 
     def _browse_source_document(self):
-        filetypes = [
-            ('All supported files', '*.pdf;*.jpg;*.jpeg;*.png;*.doc;*.docx;*.xls;*.xlsx;*.json;*.csv'),
-            ('PDF files', '*.pdf'),
-            ('Image files', '*.jpg;*.jpeg;*.png'),
-            ('Word documents', '*.doc;*.docx'),
-            ('Excel files', '*.xls;*.xlsx'),
-            ('Data files', '*.json;*.csv'),
-            ('All files', '*.*')
-        ]
-        initial_dir = getattr(self, 'doc_library_dir', None)
-        filename = filedialog.askopenfilename(
-            title="Select Source Document",
-            filetypes=filetypes,
-            defaultextension=".pdf",
-            initialdir=initial_dir if initial_dir else None
-        )
-        if filename:
-            self.txn_attachment_path.set(filename)
-            try:
-                if hasattr(self, 'txn_prefill_status'):
-                    self.txn_prefill_status.configure(text="Document attached")
-            except Exception:
-                pass
+        try:
+            filetypes = [
+                ('All supported files', '*.pdf;*.jpg;*.jpeg;*.png;*.doc;*.docx;*.xls;*.xlsx;*.json;*.csv;*.txt'),
+                ('PDF files', '*.pdf'),
+                ('Image files', '*.jpg;*.jpeg;*.png'),
+                ('Word documents', '*.doc;*.docx'),
+                ('Excel files', '*.xls;*.xlsx'),
+                ('Data files', '*.json;*.csv;*.txt'),
+                ('All files', '*.*')
+            ]
+            initial_dir = getattr(self, 'doc_library_dir', None)
+            filename = filedialog.askopenfilename(
+                title="Select Source Document",
+                filetypes=filetypes,
+                defaultextension=".pdf",
+                initialdir=initial_dir if initial_dir else None
+            )
+            if filename:
+                # Update the StringVar which is bound to the entry field
+                if hasattr(self, 'txn_attachment_path'):
+                    self.txn_attachment_path.set(filename)
+                # Also update the entry field directly if needed
+                if hasattr(self, 'txn_attachment_display'):
+                    try:
+                        self.txn_attachment_display.configure(state='normal')
+                        self.txn_attachment_display.delete(0, tk.END)
+                        self.txn_attachment_display.insert(0, filename)
+                        self.txn_attachment_display.configure(state='readonly')
+                    except Exception:
+                        pass
+                try:
+                    if hasattr(self, 'txn_prefill_status'):
+                        self.txn_prefill_status.configure(text="Document attached")
+                except Exception:
+                    pass
             try:
                 import os
                 self._audit('document_selected', {'file': filename, 'exists': os.path.exists(filename), 'readable': os.access(filename, os.R_OK)})
@@ -1843,16 +1855,16 @@ class TechFixApp(tk.Tk):
                 pass
             try:
                 self._prefill_date_from_source_document(filename)
-            except Exception:
-                self._audit('document_prefill_error', {'file': filename, 'stage': 'date'})
+            except Exception as e:
+                self._audit('document_prefill_error', {'file': filename, 'stage': 'date', 'error': str(e)})
             try:
                 self._prefill_amounts_from_source_document(filename)
-            except Exception:
-                self._audit('document_prefill_error', {'file': filename, 'stage': 'amounts'})
+            except Exception as e:
+                self._audit('document_prefill_error', {'file': filename, 'stage': 'amounts', 'error': str(e)})
             try:
                 self._prefill_from_source_document(filename)
-            except Exception:
-                self._audit('document_prefill_error', {'file': filename, 'stage': 'structured'})
+            except Exception as e:
+                self._audit('document_prefill_error', {'file': filename, 'stage': 'structured', 'error': str(e)})
             try:
                 ok_accounts = self._validate_accounts_assigned()
                 ok_amounts = self._validate_amounts_present()
@@ -1863,6 +1875,17 @@ class TechFixApp(tk.Tk):
                 self._load_document_preview(filename)
             except Exception:
                 self._audit('document_preview_error', {'file': filename})
+            # Update button states after prefilling
+            try:
+                self._update_post_buttons_enabled()
+            except Exception:
+                pass
+        except Exception as e:
+            # Show error if browse fails
+            try:
+                messagebox.showerror("Error", f"Failed to browse for document: {e}")
+            except Exception:
+                pass
             
     def _scan_source_document(self) -> None:
         try:
@@ -2084,6 +2107,8 @@ class TechFixApp(tk.Tk):
             m['description'] = get('description','desc')
             m['debit_amount'] = get('debit_amount','debit','amount')
             m['credit_amount'] = get('credit_amount','credit','amount')
+            m['debit_account'] = get('debit_account','debit_acct','debit_account_name')
+            m['credit_account'] = get('credit_account','credit_acct','credit_account_name')
             m['memo'] = get('memo','note')
             # Remove empty
             m = {k:v for k,v in m.items() if v not in (None,'')}
@@ -2120,27 +2145,55 @@ class TechFixApp(tk.Tk):
                     self.txn_memo.delete('1.0', tk.END); self.txn_memo.insert('1.0', data.get('memo'))
                 except Exception:
                     pass
-            try:
-                sugg = self._auto_entry_from_data(data, data.get('document_ref') or '')
-            except Exception:
-                sugg = {}
-            dd = sugg.get('debit_account_display')
-            cc = sugg.get('credit_account_display')
+            # Try to get accounts directly from data first (like JSON files)
+            dd = None
+            cc = None
+            if data.get('debit_account'):
+                try:
+                    dd = self._match_account_display(data.get('debit_account'))
+                except Exception:
+                    pass
+            if data.get('credit_account'):
+                try:
+                    cc = self._match_account_display(data.get('credit_account'))
+                except Exception:
+                    pass
+            
+            # Initialize sugg for use later
+            sugg = {}
+            # If accounts not found in data, try auto-entry suggestions
+            if not (dd and cc):
+                try:
+                    sugg = self._auto_entry_from_data(data, data.get('document_ref') or '')
+                except Exception:
+                    sugg = {}
+                if not dd:
+                    dd = sugg.get('debit_account_display')
+                if not cc:
+                    cc = sugg.get('credit_account_display')
+            
+            # Set accounts if we have them
             if dd or cc:
                 try:
                     self._set_accounts(dd, cc)
                 except Exception:
                     pass
-            if hasattr(self, 'debit_amt') and (data.get('debit_amount') is not None or sugg.get('debit_amount') is not None):
+            if hasattr(self, 'debit_amt') and (data.get('debit_amount') is not None or (sugg and sugg.get('debit_amount') is not None)):
                 v = data.get('debit_amount', sugg.get('debit_amount'))
                 try:
-                    self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, f"{float(v):.2f}")
+                    self.debit_amt.delete(0, tk.END)
+                    self.debit_amt.insert(0, f"{float(v):.2f}")
+                    # Trigger update after setting amount
+                    self._update_post_buttons_enabled()
                 except Exception:
                     pass
-            if hasattr(self, 'credit_amt') and (data.get('credit_amount') is not None or sugg.get('credit_amount') is not None):
+            if hasattr(self, 'credit_amt') and (data.get('credit_amount') is not None or (sugg and sugg.get('credit_amount') is not None)):
                 v = data.get('credit_amount', sugg.get('credit_amount'))
                 try:
-                    self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, f"{float(v):.2f}")
+                    self.credit_amt.delete(0, tk.END)
+                    self.credit_amt.insert(0, f"{float(v):.2f}")
+                    # Trigger update after setting amount
+                    self._update_post_buttons_enabled()
                 except Exception:
                     pass
             try:
@@ -2148,6 +2201,14 @@ class TechFixApp(tk.Tk):
                 ok_amounts = self._validate_amounts_present()
                 msg = "Prefilled from scan" + (" (ok)" if (ok_accounts and ok_amounts) else " (missing)")
                 self.txn_prefill_status.configure(text=msg)
+            except Exception:
+                pass
+            # Update button states after applying ALL data - do this last to ensure everything is set
+            try:
+                # Force update after a short delay to ensure UI has updated
+                self.after(10, self._update_post_buttons_enabled)
+                # Also update immediately
+                self._update_post_buttons_enabled()
             except Exception:
                 pass
         except Exception:
@@ -2196,8 +2257,34 @@ class TechFixApp(tk.Tk):
                 except Exception:
                     pass
             if not payload:
-                messagebox.showerror("Scan", "No code detected in image")
-                return
+                # Offer manual entry as fallback
+                missing_libs = []
+                try:
+                    from pyzbar.pyzbar import decode
+                except Exception:
+                    missing_libs.append("pyzbar")
+                try:
+                    import cv2
+                except Exception:
+                    missing_libs.append("opencv-python")
+                
+                if missing_libs:
+                    # Offer manual entry option
+                    response = messagebox.askyesno(
+                        "Scanning Libraries Not Available",
+                        f"Required libraries not available: {', '.join(missing_libs)}\n\n"
+                        "Would you like to enter the data manually instead?\n\n"
+                        "(You can paste JSON or key=value format data)"
+                    )
+                    if response:
+                        self._manual_data_entry()
+                    return
+                else:
+                    msg = "No code detected in image. The image may be too small, blurry, or the code format is not supported."
+                    response = messagebox.askyesno("Scan Failed", msg + "\n\nWould you like to enter the data manually instead?")
+                    if response:
+                        self._manual_data_entry()
+                    return
             try:
                 data = self._parse_scanned_payload(payload)
             except Exception:
@@ -2216,44 +2303,205 @@ class TechFixApp(tk.Tk):
                 self.txn_prefill_status.configure(text="Scan from image failed")
             except Exception:
                 pass
-    def _generate_test_codes(self) -> None:
+    
+    def _manual_data_entry(self) -> None:
+        """Allow user to manually paste/enter QR code or barcode data."""
+        # Create dialog window matching app styling
+        dialog = tk.Toplevel(self)
+        dialog.title("Enter Code Data Manually")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.focus_set()
+        
+        # Configure dialog background
         try:
-            from . import scanner  # type: ignore
+            dialog.configure(bg=self.palette.get('surface_bg', '#ffffff'))
         except Exception:
+            pass
+        
+        # Main container frame
+        main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Instructions section
+        instructions_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+        instructions_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        ttk.Label(
+            instructions_frame,
+            text="Enter Code Data",
+            style="Techfix.TLabelframe.Label"
+        ).pack(anchor=tk.W, pady=(0, 8))
+        
+        instructions_text = tk.Text(
+            instructions_frame,
+            height=4,
+            wrap=tk.WORD,
+            bg=self.palette.get("surface_bg", "#ffffff"),
+            fg=self.palette.get("text_secondary", "#4b5563"),
+            font=FONT_BASE,
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            padx=0,
+            pady=0
+        )
+        instructions_text.pack(fill=tk.X)
+        instructions_text.insert('1.0', 
+            "Paste the data from your QR code or barcode here.\n\n"
+            "Supported formats:\n"
+            "• JSON: {\"date\":\"2024-01-01\",\"source_type\":\"Receipt\",...}\n"
+            "• Key=Value: date=2024-01-01&source=Receipt&doc=12345&amount=99.99"
+        )
+        instructions_text.config(state=tk.DISABLED)
+        
+        # Data entry section
+        data_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+        data_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        ttk.Label(
+            data_frame,
+            text="Data:",
+            style="Techfix.TLabel"
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        # Text entry with scrollbar
+        text_container = ttk.Frame(data_frame, style="Techfix.Surface.TFrame")
+        text_container.pack(fill=tk.BOTH, expand=True)
+        
+        data_text = tk.Text(
+            text_container,
+            wrap=tk.WORD,
+            bg=self.palette.get("surface_bg", "#ffffff"),
+            fg=self.palette.get("text_primary", "#1f2937"),
+            font=FONT_MONO,
+            relief=tk.SOLID,
+            bd=1,
+            highlightthickness=1,
+            highlightbackground=self.palette.get("entry_border", "#d8dee9"),
+            highlightcolor=self.palette.get("accent_color", "#2563eb"),
+            padx=8,
+            pady=8,
+            insertbackground=self.palette.get("accent_color", "#2563eb")
+        )
+        scrollbar = ttk.Scrollbar(text_container, orient=tk.VERTICAL, command=data_text.yview)
+        data_text.configure(yscrollcommand=scrollbar.set)
+        
+        data_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        data_text.focus_set()
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+        button_frame.pack(fill=tk.X)
+        
+        def process_data():
+            payload = data_text.get('1.0', tk.END).strip()
+            if not payload:
+                messagebox.showwarning("No Data", "Please enter some data.")
+                return
+            
             try:
-                import os, sys
-                sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-                from techfix import scanner  # type: ignore
+                data = self._parse_scanned_payload(payload)
             except Exception:
-                scanner = None  # type: ignore
-        if not scanner:
-            messagebox.showerror("Test Codes", "Scanner module not available")
-            return
-        try:
-            import os
-            out_dir = os.path.join(str(db.DB_DIR), 'mock_codes')
-            os.makedirs(out_dir, exist_ok=True)
-            files = scanner.generate_mock_codes(out_dir)
-            if files:
-                self.txn_prefill_status.configure(text=f"Generated {len(files)} test codes")
-                # Open folder for convenience
+                data = None
+            
+            if not data:
+                messagebox.showerror("Invalid Data", 
+                    "Could not parse the data.\n\n"
+                    "Make sure it's valid JSON or key=value format.\n\n"
+                    "Example JSON: {\"date\":\"2024-01-01\",\"source_type\":\"Receipt\"}\n"
+                    "Example key=value: date=2024-01-01&source=Receipt&doc=12345"
+                )
+                return
+            
+            dialog.destroy()
+            try:
+                # Apply the data
+                self._apply_scanned_data(data)
+                # Force update button states after a short delay to ensure all UI updates are complete
+                self.after(100, self._update_post_buttons_enabled)
+                # Also update immediately
+                self._update_post_buttons_enabled()
+                if hasattr(self, 'txn_prefill_status'):
+                    # Check if everything was set correctly
+                    accounts_ok = self._validate_accounts_assigned() if hasattr(self, '_validate_accounts_assigned') else False
+                    amounts_ok = self._validate_amounts_present() if hasattr(self, '_validate_amounts_present') else False
+                    if accounts_ok and amounts_ok:
+                        self.txn_prefill_status.configure(text="Manual data entry successful - ready to record")
+                    else:
+                        missing = []
+                        if not accounts_ok:
+                            missing.append("accounts")
+                        if not amounts_ok:
+                            missing.append("amounts")
+                        self.txn_prefill_status.configure(text=f"Manual data entry - missing: {', '.join(missing)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to apply data: {e}")
+                if hasattr(self, 'txn_prefill_status'):
+                    self.txn_prefill_status.configure(text="Manual data entry failed")
+        
+        def load_from_file():
+            file_path = filedialog.askopenfilename(
+                title="Select text file with code data",
+                filetypes=[('Text files', '*.txt'), ('All files', '*.*')]
+            )
+            if file_path:
                 try:
-                    os.startfile(out_dir)
-                except Exception:
-                    pass
-            else:
-                messagebox.showwarning("Test Codes", "No codes generated")
-        except Exception as e:
-            messagebox.showerror("Test Codes", f"Failed to generate codes: {e}")
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        data_text.delete('1.0', tk.END)
+                        data_text.insert('1.0', content)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not read file: {e}")
+        
+        ttk.Button(
+            button_frame,
+            text="Load from File",
+            command=load_from_file,
+            style="Techfix.Theme.TButton"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=dialog.destroy,
+            style="Techfix.Theme.TButton"
+        ).pack(side=tk.RIGHT, padx=(5, 0))
+        
+        ttk.Button(
+            button_frame,
+            text="Process Data",
+            command=process_data,
+            style="Techfix.TButton"
+        ).pack(side=tk.RIGHT)
+        
+        # Set initial size and center dialog
+        dialog.update_idletasks()
+        dialog.geometry("700x500")
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
+    
     def _prefill_from_source_document(self, filename: str) -> None:
         try:
             import os, json, csv
             data = None
             updated = []
+            # Normalize the filename path
+            filename = os.path.normpath(os.path.abspath(filename))
             side_json = os.path.splitext(filename)[0] + ".json"
+            # Log for debugging
+            self._audit('prefill_sidecar_check', {'file': filename, 'sidecar': side_json, 'exists': os.path.exists(side_json)})
             if os.path.exists(side_json):
-                with open(side_json, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                try:
+                    with open(side_json, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    self._audit('prefill_json_loaded', {'file': side_json, 'keys': list(data.keys()) if isinstance(data, dict) else 'not_dict'})
+                except Exception as e:
+                    self._audit('prefill_json_read_error', {'file': side_json, 'error': str(e)})
             elif filename.lower().endswith(".json"):
                 with open(filename, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -2339,6 +2587,9 @@ class TechFixApp(tk.Tk):
                 except Exception:
                     pass
                 return False
+            # Only process data if we have a dict
+            if not isinstance(data, dict):
+                return
             if hasattr(self, "txn_date") and data.get("date"):
                 if _set_entry(self.txn_date, data.get("date")):
                     updated.append("Date")
@@ -2413,8 +2664,12 @@ class TechFixApp(tk.Tk):
                     messagebox.showwarning("Accounts", "Accounts not set from document. Please select Debit and Credit accounts.")
             except Exception:
                 pass
-        except Exception:
-            pass
+        except Exception as e:
+            # Log the error for debugging
+            try:
+                self._audit('prefill_from_source_document_error', {'file': filename, 'error': str(e)})
+            except Exception:
+                pass
 
     def _prefill_date_from_source_document(self, filename: str) -> None:
         try:
@@ -2649,19 +2904,9 @@ class TechFixApp(tk.Tk):
                 self.txn_prefill_status.configure(text='')
         except Exception:
             pass
-        # Clear document viewer state
+        # Clear document state
         try:
             self.current_document_path = None
-            if hasattr(self, 'doc_search_var'):
-                self.doc_search_var.set('')
-            if hasattr(self, 'doc_annot_var'):
-                self.doc_annot_var.set('')
-            if hasattr(self, 'doc_viewer'):
-                self.doc_viewer.configure(state=tk.NORMAL)
-                self.doc_viewer.delete('1.0', tk.END)
-                self.doc_viewer.configure(state=tk.NORMAL)
-            if hasattr(self, 'doc_view_status'):
-                self.doc_view_status.configure(text='No document selected')
             if hasattr(self, 'doc_recent_var'):
                 try:
                     self.doc_recent_var.set('')
@@ -2870,44 +3115,56 @@ class TechFixApp(tk.Tk):
         
         # Create a split pane container so both sides share space fairly
         main_container = ttk.Panedwindow(frame, orient=tk.HORIZONTAL)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         left_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
         right_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
         try:
-            main_container.add(left_panel, weight=1)
-            main_container.add(right_panel, weight=1)
+            # Balanced split: equal weights for fair space distribution
+            main_container.add(left_panel, weight=1, minsize=500)  # Left panel for form
+            main_container.add(right_panel, weight=1, minsize=400)  # Right panel for recent transactions
         except Exception:
-            pass
+            # Fallback for older ttk versions that don't support minsize
+            try:
+                main_container.add(left_panel, weight=1)
+                main_container.add(right_panel, weight=1)
+            except Exception:
+                pass
         
-        # Form frame with fixed height
+        # Form frame - fills available space but doesn't expand beyond content
         form = ttk.LabelFrame(left_panel, text="New Transaction", style="Techfix.TLabelframe")
-        form.pack(fill=tk.BOTH, expand=True, padx=(0, 6), pady=0)
+        form.pack(fill=tk.BOTH, expand=True, padx=(0, 8), pady=(0, 0))
 
-        # Column weight strategy: labels (0,2,4) stay compact, inputs (1,3) expand
-        form.columnconfigure(0, weight=0, minsize=120)
-        form.columnconfigure(1, weight=3, minsize=280)
-        form.columnconfigure(2, weight=0, minsize=120)
-        form.columnconfigure(3, weight=4, minsize=320)
-        form.columnconfigure(4, weight=0, minsize=120)
+        # Column weight strategy: better balanced distribution
+        # Labels: compact, Input fields: expand proportionally
+        form.columnconfigure(0, weight=0, minsize=100)  # Label column 1
+        form.columnconfigure(1, weight=1, minsize=180)  # Input column 1
+        form.columnconfigure(2, weight=0, minsize=100)  # Label column 2
+        form.columnconfigure(3, weight=2, minsize=200)  # Input column 2 (wider for description)
+        form.columnconfigure(4, weight=0, minsize=0)    # Spacer (not used)
         
-        # Configure form grid row weights
-        for i in range(9):  # 0-8 rows
-            form.rowconfigure(i, weight=0)
-        form.rowconfigure(5, weight=1)  # Memo row gets extra space
+        # Configure form grid row weights for better vertical distribution
+        form.rowconfigure(0, weight=0)  # Date/Description row
+        form.rowconfigure(1, weight=0)  # Debit row
+        form.rowconfigure(2, weight=0)  # Credit row
+        form.rowconfigure(3, weight=0)  # Doc references row
+        form.rowconfigure(4, weight=0)  # Source/Attachment row
+        form.rowconfigure(5, weight=0)  # Memo row (fixed height)
+        form.rowconfigure(6, weight=0)  # Options row
+        form.rowconfigure(7, weight=0)  # Action buttons row
         
-        # Date and Description row with reduced padding
-        ttk.Label(form, text="Date: (YYYY-MM-DD)").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        # Date and Description row with better spacing
+        ttk.Label(form, text="Date:").grid(row=0, column=0, sticky="w", padx=(4, 2), pady=(6, 4))
         # Date entry with picker and Today button
         date_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        date_frame.grid(row=0, column=1, sticky="w", padx=4, pady=2)
+        date_frame.grid(row=0, column=1, sticky="w", padx=2, pady=(6, 4))
         self.txn_date = ttk.Entry(date_frame, style="Techfix.TEntry", width=12)
         self.txn_date.pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(date_frame, text="📅", width=3, command=lambda: self._pick_txn_date(), style="Techfix.TButton").pack(side=tk.LEFT, padx=(2,0))
         ttk.Button(date_frame, text="Today", width=6, command=lambda: self._set_txn_date_today(), style="Techfix.TButton").pack(side=tk.LEFT, padx=(4,0))
 
-        ttk.Label(form, text="Description:").grid(row=0, column=2, sticky="w", padx=2, pady=2)
+        ttk.Label(form, text="Description:").grid(row=0, column=2, sticky="w", padx=(8, 2), pady=(6, 4))
         self.txn_desc = ttk.Entry(form, style="Techfix.TEntry")
-        self.txn_desc.grid(row=0, column=3, columnspan=2, sticky="we", padx=2, pady=2)
+        self.txn_desc.grid(row=0, column=3, columnspan=2, sticky="we", padx=2, pady=(6, 4))
 
         accounts = db.get_accounts()
         account_names = [f"{a['code']} - {a['name']}" for a in accounts]
@@ -2923,11 +3180,11 @@ class TechFixApp(tk.Tk):
             except Exception:
                 pass
 
-        # Debit line with optimized spacing
-        ttk.Label(form, text="Debit Account:").grid(row=1, column=0, sticky="w", padx=2, pady=1)
+        # Debit line with better spacing
+        ttk.Label(form, text="Debit Account:").grid(row=1, column=0, sticky="w", padx=(4, 2), pady=4)
         self.debit_acct_var = tk.StringVar(value="")
         self.debit_acct = ttk.Combobox(form, values=[''] + account_names, textvariable=self.debit_acct_var, style="Techfix.TCombobox")
-        self.debit_acct.grid(row=1, column=1, sticky="we", padx=2, pady=1)
+        self.debit_acct.grid(row=1, column=1, sticky="we", padx=2, pady=4)
         try:
             self.debit_acct.set('')
         except Exception:
@@ -2937,19 +3194,19 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
         
-        ttk.Label(form, text="Amount:").grid(row=1, column=2, sticky="e", padx=2, pady=1)
+        ttk.Label(form, text="Amount:").grid(row=1, column=2, sticky="e", padx=(8, 2), pady=4)
         self.debit_amt = ttk.Entry(form, style="Techfix.TEntry")
-        self.debit_amt.grid(row=1, column=3, sticky="we", padx=2, pady=1)
+        self.debit_amt.grid(row=1, column=3, sticky="we", padx=2, pady=4)
         try:
             self.debit_amt.bind('<KeyRelease>', lambda e: self._update_post_buttons_enabled())
         except Exception:
             pass
 
-        # Credit line with optimized spacing
-        ttk.Label(form, text="Credit Account:").grid(row=2, column=0, sticky="w", padx=2, pady=1)
+        # Credit line with better spacing
+        ttk.Label(form, text="Credit Account:").grid(row=2, column=0, sticky="w", padx=(4, 2), pady=4)
         self.credit_acct_var = tk.StringVar(value="")
         self.credit_acct = ttk.Combobox(form, values=[''] + account_names, textvariable=self.credit_acct_var, style="Techfix.TCombobox")
-        self.credit_acct.grid(row=2, column=1, sticky="we", padx=2, pady=1)
+        self.credit_acct.grid(row=2, column=1, sticky="we", padx=2, pady=4)
         try:
             self.credit_acct.set('')
         except Exception:
@@ -2959,25 +3216,25 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
         
-        ttk.Label(form, text="Amount:").grid(row=2, column=2, sticky="e", padx=2, pady=1)
+        ttk.Label(form, text="Amount:").grid(row=2, column=2, sticky="e", padx=(8, 2), pady=4)
         self.credit_amt = ttk.Entry(form, style="Techfix.TEntry")
-        self.credit_amt.grid(row=2, column=3, sticky="we", padx=2, pady=1)
+        self.credit_amt.grid(row=2, column=3, sticky="we", padx=2, pady=4)
         try:
             self.credit_amt.bind('<KeyRelease>', lambda e: self._update_post_buttons_enabled())
         except Exception:
             pass
 
-        # Document references row with optimized spacing
-        ttk.Label(form, text="Doc #:").grid(row=3, column=0, sticky="w", padx=2, pady=1)
+        # Document references row with better spacing
+        ttk.Label(form, text="Doc #:").grid(row=3, column=0, sticky="w", padx=(4, 2), pady=4)
         self.txn_doc_ref = ttk.Entry(form, style="Techfix.TEntry")
-        self.txn_doc_ref.grid(row=3, column=1, sticky="we", padx=2, pady=1)
+        self.txn_doc_ref.grid(row=3, column=1, sticky="we", padx=2, pady=4)
 
-        ttk.Label(form, text="External Ref:").grid(row=3, column=2, sticky="e", padx=2, pady=1)
+        ttk.Label(form, text="External Ref:").grid(row=3, column=2, sticky="e", padx=(8, 2), pady=4)
         self.txn_external_ref = ttk.Entry(form, style="Techfix.TEntry")
-        self.txn_external_ref.grid(row=3, column=3, sticky="we", padx=2, pady=1)
+        self.txn_external_ref.grid(row=3, column=3, sticky="we", padx=2, pady=4)
 
-        # Source type and attachment row with optimized layout
-        ttk.Label(form, text="Source:").grid(row=4, column=0, sticky="w", padx=2, pady=(6,1))
+        # Source type row
+        ttk.Label(form, text="Source:").grid(row=4, column=0, sticky="w", padx=(4, 2), pady=(6, 4))
         self.txn_source_type = ttk.Combobox(
             form,
             values=["", "Invoice", "Receipt", "Bank", "Adjust", "Payroll", "Other"],
@@ -2986,91 +3243,111 @@ class TechFixApp(tk.Tk):
             width=15
         )
         self.txn_source_type.set("")
-        self.txn_source_type.grid(row=4, column=1, sticky="we", padx=2, pady=1)
+        self.txn_source_type.grid(row=4, column=1, sticky="we", padx=2, pady=(6, 4))
 
-        # Attachment row with better button visibility
-        ttk.Label(form, text="Document:").grid(row=4, column=2, sticky="e", padx=2, pady=(6,1))
+        # Document attachment section - split into two rows for better layout
+        ttk.Label(form, text="Document:").grid(row=4, column=2, sticky="e", padx=(8, 2), pady=(6, 4))
         self.txn_attachment_path = tk.StringVar(value="")
         
-        # Create a frame for the entry and button
+        # Create a frame for the entry and buttons
         attach_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        attach_frame.grid(row=4, column=3, sticky="we", padx=2, pady=1)
+        attach_frame.grid(row=4, column=3, columnspan=2, sticky="we", padx=2, pady=(6, 4))
         
         # Configure the frame to handle resizing
         attach_frame.columnconfigure(0, weight=1)
+        attach_frame.rowconfigure(0, weight=0)  # Entry row
+        attach_frame.rowconfigure(1, weight=0)  # Scan buttons row
+        attach_frame.rowconfigure(2, weight=0)  # Status label row - fixed height
         
-        # Entry field for document path
+        # First row: Entry field and Browse button
+        entry_row = ttk.Frame(attach_frame, style="Techfix.Surface.TFrame")
+        entry_row.grid(row=0, column=0, sticky="we")
+        entry_row.columnconfigure(0, weight=1)
+        
         self.txn_attachment_display = ttk.Entry(
-            attach_frame, 
+            entry_row, 
             textvariable=self.txn_attachment_path, 
             state="readonly", 
             style="Techfix.TEntry"
         )
-        self.txn_attachment_display.grid(row=0, column=0, sticky="we", padx=(0,4))
+        self.txn_attachment_display.grid(row=0, column=0, sticky="we", padx=(0, 4))
         
-        # Browse button with better visibility
         browse_btn = ttk.Button(
-            attach_frame, 
+            entry_row, 
             text="Browse...", 
             command=self._browse_source_document, 
             style="Techfix.TButton",
-            width=8
-        )
-        browse_btn.grid(row=0, column=1, sticky="e", padx=(4, 0))
-        scan_btn = ttk.Button(
-            attach_frame,
-            text="Scan",
-            command=self._scan_source_document,
-            style="Techfix.TButton",
-            width=8
-        )
-        scan_btn.grid(row=0, column=2, sticky="e", padx=(4, 0))
-        scan_img_btn = ttk.Button(
-            attach_frame,
-            text="Scan From Image…",
-            command=self._scan_from_image_file,
-            style="Techfix.TButton",
-            width=18
-        )
-        scan_img_btn.grid(row=0, column=3, sticky="e", padx=(4, 0))
-        test_btn = ttk.Button(
-            attach_frame,
-            text="Test Codes",
-            command=self._generate_test_codes,
-            style="Techfix.TButton",
             width=10
         )
-        test_btn.grid(row=0, column=4, sticky="e", padx=(4, 0))
-        self.txn_prefill_status = ttk.Label(attach_frame, text="", style="Techfix.TLabel")
-        self.txn_prefill_status.grid(row=1, column=0, columnspan=5, sticky="w", padx=(0,4), pady=(4,0))
+        browse_btn.grid(row=0, column=1, sticky="e")
+        
+        # Second row: Scan buttons
+        scan_row = ttk.Frame(attach_frame, style="Techfix.Surface.TFrame")
+        scan_row.grid(row=1, column=0, sticky="we", pady=(4, 0))
+        
+        scan_btn = ttk.Button(
+            scan_row,
+            text="Scan",
+            command=self._scan_source_document,
+            style="Techfix.Theme.TButton",
+            width=10
+        )
+        scan_btn.pack(side=tk.LEFT, padx=(0, 4))
+        
+        scan_img_btn = ttk.Button(
+            scan_row,
+            text="Scan Image",
+            command=self._scan_from_image_file,
+            style="Techfix.Theme.TButton",
+            width=12
+        )
+        scan_img_btn.pack(side=tk.LEFT, padx=(0, 4))
+        
+        manual_entry_btn = ttk.Button(
+            scan_row,
+            text="Enter Manually",
+            command=self._manual_data_entry,
+            style="Techfix.Theme.TButton",
+            width=14
+        )
+        manual_entry_btn.pack(side=tk.LEFT)
+        
+        # Status label below buttons - wrap text to prevent stretching
+        self.txn_prefill_status = ttk.Label(
+            attach_frame, 
+            text="", 
+            style="Techfix.TLabel",
+            wraplength=400  # Prevent label from stretching too wide
+        )
+        self.txn_prefill_status.grid(row=2, column=0, sticky="w", pady=(4, 0))
 
 
-        # Compact memo field
-        ttk.Label(form, text="Memo:").grid(row=5, column=0, sticky="nw", padx=2, pady=(6,2))
+        # Memo field with better spacing
+        ttk.Label(form, text="Memo:").grid(row=5, column=0, sticky="nw", padx=(4, 2), pady=(6, 2))
         
         # Create a frame to hold the text widget and scrollbar
         memo_frame = ttk.Frame(form, style="Techfix.TFrame")
-        memo_frame.grid(row=5, column=1, columnspan=4, sticky="nsew", padx=2, pady=2)
+        memo_frame.grid(row=5, column=1, columnspan=4, sticky="nsew", padx=2, pady=(6, 2))
         
         # Configure grid weights for memo frame
         memo_frame.columnconfigure(0, weight=1)
         memo_frame.rowconfigure(0, weight=1)
         
-        # Text widget with reduced height and padding
+        # Text widget with fixed height
         self.txn_memo = tk.Text(
             memo_frame,
-            height=3,
+            height=4,
             bg=self.palette["surface_bg"],
             fg=self.palette["text_primary"],
-            bd=0,
-            relief=tk.FLAT,
-            highlightthickness=0,
+            bd=1,
+            relief=tk.SOLID,
+            highlightthickness=1,
             highlightbackground=self.palette.get("entry_border", "#d8dee9"),
             highlightcolor=self.palette.get("accent_color", "#2563eb"),
             wrap=tk.WORD,
             font=("Segoe UI", 9),
-            padx=4,
-            pady=2
+            padx=6,
+            pady=4
         )
         self.txn_memo.grid(row=0, column=0, sticky="nsew")
         
@@ -3082,18 +3359,15 @@ class TechFixApp(tk.Tk):
         )
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.txn_memo.config(yscrollcommand=scrollbar.set)
-        
-        # Configure row weight for the memo row
-        form.rowconfigure(5, weight=0)  # Don't let memo expand too much
 
-        # Compact options frame
+        # Options frame with better spacing
         options_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        options_frame.grid(row=6, column=0, columnspan=5, sticky="we", padx=2, pady=2)
+        options_frame.grid(row=6, column=0, columnspan=5, sticky="we", padx=2, pady=(6, 2))
         
         # Configure options frame columns
         options_frame.columnconfigure(0, weight=1)
         
-        # Left side options with minimal spacing
+        # Left side options with better spacing
         options_container = ttk.Frame(options_frame, style="Techfix.Surface.TFrame")
         options_container.pack(fill=tk.X, expand=True)
         
@@ -3103,7 +3377,7 @@ class TechFixApp(tk.Tk):
             text="Adjusting Entry", 
             variable=self.txn_is_adjust, 
             style="Techfix.TCheckbutton"
-        ).pack(side=tk.LEFT, padx=(0, 12), pady=1)
+        ).pack(side=tk.LEFT, padx=(0, 16), pady=2)
 
         self.txn_schedule_reverse = tk.IntVar(value=0)
         ttk.Checkbutton(
@@ -3112,64 +3386,28 @@ class TechFixApp(tk.Tk):
             variable=self.txn_schedule_reverse,
             style="Techfix.TCheckbutton",
             command=lambda: self._on_schedule_reverse_toggle()
-        ).pack(side=tk.LEFT, padx=(0, 4), pady=1)
+        ).pack(side=tk.LEFT, padx=(0, 8), pady=2)
 
-        # Document Viewer Panel
-        viewer_wrap = ttk.Labelframe(form, text="Document Viewer", style="Techfix.TLabelframe")
-        viewer_wrap.grid(row=7, column=0, columnspan=5, sticky="nsew", padx=2, pady=4)
-        form.rowconfigure(7, weight=1)
-        viewer_wrap.columnconfigure(0, weight=1)
-        viewer_wrap.rowconfigure(1, weight=1)
-
-        toolbar = ttk.Frame(viewer_wrap, style="Techfix.Surface.TFrame")
-        toolbar.grid(row=0, column=0, sticky="we", padx=4, pady=2)
-        self.doc_view_status = ttk.Label(toolbar, text="No document selected", style="Techfix.TLabel")
-        self.doc_view_status.pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Open", command=lambda: self._open_document_external(), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
-        ttk.Button(toolbar, text="Zoom +", command=lambda: self._document_zoom(1), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
-        ttk.Button(toolbar, text="Zoom -", command=lambda: self._document_zoom(-1), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
-        ttk.Button(toolbar, text="Reset", command=lambda: self._document_zoom(0), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
-        self.doc_search_var = tk.StringVar(value="")
-        ttk.Entry(toolbar, textvariable=self.doc_search_var, width=18, style="Techfix.TEntry").pack(side=tk.RIGHT, padx=4)
-        ttk.Button(toolbar, text="Find", command=lambda: self._document_search(), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
-
-        # (Removed Library controls for simple viewer layout)
-
-        # Viewer area
-        import tkinter.scrolledtext as st
-        self.doc_view_font_size = 11
-        self.doc_viewer = st.ScrolledText(viewer_wrap, bg=self.palette["surface_bg"], fg=self.palette["text_primary"], wrap=tk.WORD, font=("Segoe UI", self.doc_view_font_size))
-        self.doc_viewer.grid(row=1, column=0, sticky="nsew", padx=4, pady=2)
-        self.doc_viewer.tag_configure('search_hit', background=self.palette.get('tab_selected_bg', '#e0ecff'))
-        # (Removed thumbnails pane for simpler layout)
-
-        # Annotation tools
-        annot_bar = ttk.Frame(viewer_wrap, style="Techfix.Surface.TFrame")
-        annot_bar.grid(row=2, column=0, sticky="we", padx=4, pady=(0,4))
-        self.doc_annot_var = tk.StringVar(value="")
-        ttk.Entry(annot_bar, textvariable=self.doc_annot_var, width=40, style="Techfix.TEntry").pack(side=tk.LEFT, padx=4)
-        ttk.Button(annot_bar, text="Save Note", command=lambda: self._document_add_annotation(), style="Techfix.TButton").pack(side=tk.LEFT)
-        # (Removed bookmarks UI to restore simpler viewer)
-        
-        ttk.Label(options_container, text="Date:").pack(side=tk.LEFT, padx=(0, 2), pady=1)
+        ttk.Label(options_container, text="Reverse Date:").pack(side=tk.LEFT, padx=(0, 4), pady=2)
         self.txn_reverse_date = ttk.Entry(options_container, width=12, style="Techfix.TEntry")
-        self.txn_reverse_date.pack(side=tk.LEFT, pady=1)
+        self.txn_reverse_date.pack(side=tk.LEFT, pady=2)
         try:
             # Disabled until Schedule Reversal is checked
             self.txn_reverse_date.configure(state='disabled')
         except Exception:
             pass
 
-        # Action buttons - compact and aligned
+        # Action buttons - better spacing with fixed layout
         action_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        action_frame.grid(row=8, column=0, columnspan=5, sticky="e", padx=2, pady=(4, 0))
+        action_frame.grid(row=7, column=0, columnspan=5, sticky="ew", padx=2, pady=(8, 6))
         
-        # Configure action frame columns
-        action_frame.columnconfigure(0, weight=1)
+        # Configure action frame columns - ensure buttons stay visible
+        action_frame.columnconfigure(0, weight=1)  # Spacer on left
+        action_frame.columnconfigure(1, weight=0)  # Button container - fixed width
         
-        # Button container with consistent spacing
+        # Button container with consistent spacing - use grid instead of pack for better control
         btn_container = ttk.Frame(action_frame, style="Techfix.Surface.TFrame")
-        btn_container.pack(anchor="e")
+        btn_container.grid(row=0, column=1, sticky="e")
         
         # Common button style with fixed width
         button_style = {
@@ -3178,14 +3416,20 @@ class TechFixApp(tk.Tk):
             'padding': (10, 4)  # More padding for better clickability
         }
         
+        # Use grid for buttons to ensure they stay visible and don't stretch
         self.btn_clear = ttk.Button(btn_container, text="Clear Form", command=self._clear_transaction_form, **button_style)
-        self.btn_clear.pack(side=tk.RIGHT, padx=(8, 0), pady=2)
+        self.btn_clear.grid(row=0, column=0, padx=(8, 0), pady=2, sticky="e")
         
         self.btn_draft = ttk.Button(btn_container, text="Save Draft", command=lambda: self._record_transaction("draft"), **button_style)
-        self.btn_draft.pack(side=tk.RIGHT, padx=6, pady=2)
+        self.btn_draft.grid(row=0, column=1, padx=6, pady=2, sticky="e")
         
         self.btn_post = ttk.Button(btn_container, text="Record & Post", command=lambda: self._record_transaction("posted"), **button_style)
-        self.btn_post.pack(side=tk.RIGHT, pady=2)
+        self.btn_post.grid(row=0, column=2, pady=2, sticky="e")
+        
+        # Configure button container columns to prevent stretching
+        btn_container.columnconfigure(0, weight=0)
+        btn_container.columnconfigure(1, weight=0)
+        btn_container.columnconfigure(2, weight=0)
         try:
             self._update_post_buttons_enabled()
         except Exception:
@@ -4202,12 +4446,55 @@ class TechFixApp(tk.Tk):
     def _set_accounts(self, debit_disp: Optional[str], credit_disp: Optional[str]) -> None:
         try:
             if debit_disp and hasattr(self, 'debit_acct'):
-                self.debit_acct.set(debit_disp)
+                # Update StringVar first (this is what the combobox reads from)
+                if hasattr(self, 'debit_acct_var'):
+                    self.debit_acct_var.set(debit_disp)
+                # Then update the combobox itself
+                try:
+                    self.debit_acct.set(debit_disp)
+                except Exception:
+                    # If set fails, try to add to values first
+                    try:
+                        current_values = list(self.debit_acct['values'])
+                        if debit_disp not in current_values:
+                            self.debit_acct['values'] = tuple(list(current_values) + [debit_disp])
+                        self.debit_acct.set(debit_disp)
+                    except Exception:
+                        pass
                 self._accounts_prefilled = True
+                # Trigger the account changed event to update UI
+                try:
+                    self._on_account_changed('debit')
+                except Exception:
+                    pass
             if credit_disp and hasattr(self, 'credit_acct'):
-                self.credit_acct.set(credit_disp)
+                # Update StringVar first (this is what the combobox reads from)
+                if hasattr(self, 'credit_acct_var'):
+                    self.credit_acct_var.set(credit_disp)
+                # Then update the combobox itself
+                try:
+                    self.credit_acct.set(credit_disp)
+                except Exception:
+                    # If set fails, try to add to values first
+                    try:
+                        current_values = list(self.credit_acct['values'])
+                        if credit_disp not in current_values:
+                            self.credit_acct['values'] = tuple(list(current_values) + [credit_disp])
+                        self.credit_acct.set(credit_disp)
+                    except Exception:
+                        pass
                 self._accounts_prefilled = True
-            # Do not show account set status in the UI
+                # Trigger the account changed event to update UI
+                try:
+                    self._on_account_changed('credit')
+                except Exception:
+                    pass
+            # Update button states after setting accounts - with a small delay to ensure UI updates
+            try:
+                self.after(50, self._update_post_buttons_enabled)
+                self._update_post_buttons_enabled()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -4350,12 +4637,27 @@ class TechFixApp(tk.Tk):
 
     def _update_post_buttons_enabled(self) -> None:
         try:
-            dd = self.debit_acct.get().strip() if hasattr(self, 'debit_acct') else ''
-            cc = self.credit_acct.get().strip() if hasattr(self, 'credit_acct') else ''
+            # Try to get from StringVar first, then fallback to combobox
+            if hasattr(self, 'debit_acct_var'):
+                dd = self.debit_acct_var.get().strip()
+            elif hasattr(self, 'debit_acct'):
+                dd = self.debit_acct.get().strip()
+            else:
+                dd = ''
+            
+            if hasattr(self, 'credit_acct_var'):
+                cc = self.credit_acct_var.get().strip()
+            elif hasattr(self, 'credit_acct'):
+                cc = self.credit_acct.get().strip()
+            else:
+                cc = ''
+            
             d = self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else ''
             c = self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else ''
+            
             enabled = bool(dd) and bool(cc) and bool(d) and bool(c)
             state = 'normal' if enabled else 'disabled'
+            
             if hasattr(self, 'btn_post'):
                 try:
                     self.btn_post.configure(state=state)
@@ -4366,87 +4668,28 @@ class TechFixApp(tk.Tk):
                     self.btn_draft.configure(state='normal')
                 except Exception:
                     pass
-        except Exception:
-            pass
+        except Exception as e:
+            # Debug: log the error but don't break
+            try:
+                self._audit('button_enable_error', {'error': str(e)})
+            except Exception:
+                pass
 
     def _load_document_preview(self, filename: str) -> None:
+        """Store document path for external opening."""
         try:
             import os
             self.current_document_path = filename
-            self.doc_view_status.configure(text="Loading…")
             if not os.path.exists(filename):
-                self.doc_view_status.configure(text="File not found")
                 messagebox.showerror("Document", "Selected document does not exist")
                 self._audit('document_missing', {'file': filename})
                 return
             if not os.access(filename, os.R_OK):
-                self.doc_view_status.configure(text="No permission to read")
                 messagebox.showerror("Document", "You do not have permission to read this document")
                 self._audit('document_permission_denied', {'file': filename})
                 return
-            ext = os.path.splitext(filename)[1].lower()
-            content = None
-            ok = False
-            if not hasattr(self, '_doc_cache'):
-                self._doc_cache = {}
-            cache_hit = False
-            if filename in self._doc_cache:
-                content = self._doc_cache.get(filename)
-                cache_hit = content is not None
-                ok = cache_hit
-            if ext in ('.txt', '.csv', '.json'):
-                try:
-                    if not cache_hit:
-                        with open(filename, 'r', encoding='utf-8', errors='replace') as f:
-                            # Lazy load first 256KB
-                            content = f.read(256 * 1024)
-                        self._doc_cache[filename] = content
-                    ok = True
-                except Exception:
-                    ok = False
-            elif ext == '.pdf':
-                try:
-                    import fitz  # PyMuPDF
-                    doc = fitz.open(filename)
-                    self.page_slider.configure(to=max(1, doc.page_count))
-                    page = doc.load_page(0)
-                    text = page.get_text() or "(PDF text not available)"
-                    content = text
-                    try:
-                        self._build_pdf_thumbnails(doc)
-                    except Exception:
-                        pass
-                    ok = True
-                except Exception:
-                    ok = False
-            elif ext in ('.docx', '.doc'):
-                try:
-                    import docx
-                    d = docx.Document(filename)
-                    content = "\n".join(p.text for p in d.paragraphs[:500])
-                    ok = True
-                except Exception:
-                    ok = False
-            else:
-                ok = False
-            if ok and content:
-                try:
-                    self.doc_viewer.configure(state=tk.NORMAL)
-                    self.doc_viewer.delete('1.0', tk.END)
-                    self.doc_viewer.insert('1.0', content)
-                    self.doc_viewer.configure(state=tk.NORMAL)
-                    self.doc_view_status.configure(text=os.path.basename(filename))
-                    self._audit('document_view_opened', {'file': filename, 'ext': ext, 'length': len(content)})
-                except Exception:
-                    ok = False
-            if not ok:
-                self.doc_view_status.configure(text="Preview not available. Use Open")
-                self._audit('document_preview_unavailable', {'file': filename})
+            self._audit('document_selected', {'file': filename})
         except Exception:
-            try:
-                self.doc_view_status.configure(text="Failed to load document")
-            except Exception:
-                pass
             self._audit('document_preview_error', {'file': filename, 'stage': 'exception'})
 
     def _set_view_mode(self, mode: str) -> None:
@@ -4457,20 +4700,8 @@ class TechFixApp(tk.Tk):
             pass
 
     def _goto_page(self, page: int) -> None:
-        try:
-            import fitz
-            path = getattr(self, 'current_document_path', None)
-            if not path or not path.lower().endswith('.pdf'):
-                return
-            doc = fitz.open(path)
-            p = doc.load_page(max(0, min(doc.page_count - 1, page - 1)))
-            text = p.get_text() or f"(Page {page})"
-            self.doc_viewer.configure(state=tk.NORMAL)
-            self.doc_viewer.delete('1.0', tk.END)
-            self.doc_viewer.insert('1.0', text)
-            self.doc_viewer.configure(state=tk.NORMAL)
-        except Exception:
-            pass
+        """No-op: document viewer removed."""
+        pass
 
     def _build_pdf_thumbnails(self, doc) -> None:
         try:
@@ -4535,6 +4766,7 @@ class TechFixApp(tk.Tk):
             pass
 
     def _open_document_external(self) -> None:
+        """Open the selected document in the system's default application."""
         try:
             import os
             path = getattr(self, 'current_document_path', None) or (self.txn_attachment_path.get().strip() if hasattr(self, 'txn_attachment_path') else None)
@@ -4649,12 +4881,6 @@ class TechFixApp(tk.Tk):
             if hasattr(self, 'txn_prefill_status'):
                 self.txn_prefill_status.configure(text='')
             self.current_document_path = None
-            if hasattr(self, 'doc_viewer'):
-                self.doc_viewer.configure(state=tk.NORMAL)
-                self.doc_viewer.delete('1.0', tk.END)
-                self.doc_viewer.configure(state=tk.NORMAL)
-            if hasattr(self, 'doc_view_status'):
-                self.doc_view_status.configure(text='No document selected')
         except Exception:
             pass
 
@@ -4801,42 +5027,16 @@ class TechFixApp(tk.Tk):
             pass
 
     def _document_zoom(self, delta: int) -> None:
-        try:
-            if delta == 0:
-                self.doc_view_font_size = 11
-            else:
-                self.doc_view_font_size = max(8, min(24, self.doc_view_font_size + delta))
-            self.doc_viewer.configure(font=("Segoe UI", self.doc_view_font_size))
-        except Exception:
-            pass
+        """No-op: document viewer removed."""
+        pass
 
     def _document_search(self) -> None:
-        try:
-            q = self.doc_search_var.get().strip()
-            self.doc_viewer.tag_remove('search_hit', '1.0', tk.END)
-            if not q:
-                return
-            idx = '1.0'
-            while True:
-                idx = self.doc_viewer.search(q, idx, nocase=True, stopindex=tk.END)
-                if not idx:
-                    break
-                lastidx = f"{idx}+{len(q)}c"
-                self.doc_viewer.tag_add('search_hit', idx, lastidx)
-                idx = lastidx
-        except Exception:
-            pass
+        """No-op: document viewer removed."""
+        pass
 
     def _document_add_annotation(self) -> None:
-        try:
-            note = self.doc_annot_var.get().strip()
-            path = getattr(self, 'current_document_path', '')
-            if note:
-                self._audit('document_annotation', {'file': path, 'note': note})
-                self.doc_annot_var.set('')
-                messagebox.showinfo('Annotation', 'Note saved to audit log')
-        except Exception:
-            pass
+        """No-op: document viewer removed."""
+        pass
 
     def _capture_ui_snapshot(self, *, label: str = "snapshot") -> None:
         try:
