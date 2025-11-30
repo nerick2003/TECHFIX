@@ -154,7 +154,16 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             original_entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
             reverse_on TEXT NOT NULL,
             created_on TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            status TEXT NOT NULL DEFAULT 'pending'
+            status TEXT NOT NULL DEFAULT 'pending',
+            deadline_on TEXT,
+            entry_type TEXT,
+            template_id INTEGER,
+            priority TEXT,
+            reminder_on TEXT,
+            notes TEXT,
+            approval_required INTEGER NOT NULL DEFAULT 0,
+            authorization_level INTEGER NOT NULL DEFAULT 0,
+            reversed_entry_id INTEGER
         );
         """
     )
@@ -283,7 +292,65 @@ def _apply_schema_updates(conn: sqlite3.Connection) -> None:
         )
         """,
     )
+    _ensure_column(conn, "reversing_entry_queue", "deadline_on TEXT")
+    _ensure_column(conn, "reversing_entry_queue", "entry_type TEXT")
+    _ensure_column(conn, "reversing_entry_queue", "template_id INTEGER")
+    _ensure_column(conn, "reversing_entry_queue", "priority TEXT")
+    _ensure_column(conn, "reversing_entry_queue", "reminder_on TEXT")
+    _ensure_column(conn, "reversing_entry_queue", "notes TEXT")
+    _ensure_column(conn, "reversing_entry_queue", "approval_required INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "reversing_entry_queue", "authorization_level INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "reversing_entry_queue", "reversed_entry_id INTEGER")
+
+    _ensure_table(
+        conn,
+        "reversing_entry_templates",
+        """
+        CREATE TABLE reversing_entry_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            entry_type TEXT,
+            required_fields TEXT,
+            default_memo TEXT,
+            authorization_level INTEGER NOT NULL DEFAULT 0,
+            approval_required INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+    )
+
+    _ensure_table(
+        conn,
+        "reversing_entry_approvals",
+        """
+        CREATE TABLE reversing_entry_approvals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            queue_id INTEGER NOT NULL REFERENCES reversing_entry_queue(id) ON DELETE CASCADE,
+            reviewer TEXT,
+            role TEXT,
+            level INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            approved_on TEXT,
+            notes TEXT
+        )
+        """,
+    )
+
+    _ensure_table(
+        conn,
+        "reversing_entry_history",
+        """
+        CREATE TABLE reversing_entry_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            queue_id INTEGER NOT NULL REFERENCES reversing_entry_queue(id) ON DELETE CASCADE,
+            change_on TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            field TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            changed_by TEXT DEFAULT 'system'
+        )
+        """,
+    )
 
     _ensure_table(
         conn,
@@ -959,6 +1026,14 @@ def schedule_reversing_entry(
     entry_id: int,
     reverse_on: str,
     *,
+    deadline_on: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    template_id: Optional[int] = None,
+    priority: Optional[str] = None,
+    reminder_on: Optional[str] = None,
+    notes: Optional[str] = None,
+    approval_required: int = 0,
+    authorization_level: int = 0,
     conn: Optional[sqlite3.Connection] = None,
 ) -> int:
     owned = conn is not None
@@ -967,10 +1042,24 @@ def schedule_reversing_entry(
     try:
         cur = conn.execute(
             """
-            INSERT INTO reversing_entry_queue(original_entry_id, reverse_on)
-            VALUES (?, ?)
+            INSERT INTO reversing_entry_queue(
+                original_entry_id, reverse_on, deadline_on, entry_type, template_id,
+                priority, reminder_on, notes, approval_required, authorization_level
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (entry_id, reverse_on),
+            (
+                entry_id,
+                reverse_on,
+                deadline_on,
+                entry_type,
+                template_id,
+                priority,
+                reminder_on,
+                notes,
+                int(approval_required),
+                int(authorization_level),
+            ),
         )
         conn.commit()
         return int(cur.lastrowid)
@@ -986,7 +1075,9 @@ def list_reversing_queue(period_id: Optional[int] = None, *, conn: Optional[sqli
     try:
         sql = (
             """
-            SELECT rq.id, rq.original_entry_id, rq.reverse_on, rq.created_on, rq.status, rq.reversed_entry_id
+            SELECT rq.id, rq.original_entry_id, rq.reverse_on, rq.created_on, rq.status, rq.reversed_entry_id,
+                   rq.deadline_on, rq.entry_type, rq.template_id, rq.priority, rq.reminder_on, rq.notes,
+                   rq.approval_required, rq.authorization_level
             FROM reversing_entry_queue rq
             JOIN journal_entries je ON je.id = rq.original_entry_id
             {period_clause}
@@ -1011,15 +1102,30 @@ def update_reversing_status(item_id: int, status: str, *, reversed_entry_id: Opt
     if not conn:
         conn = get_connection()
     try:
+        prev = conn.execute(
+            "SELECT status FROM reversing_entry_queue WHERE id=?",
+            (item_id,),
+        ).fetchone()
+        old_status = prev["status"] if prev else None
         conn.execute(
             """
             UPDATE reversing_entry_queue
             SET status=?, reversed_entry_id=COALESCE(?, reversed_entry_id)
             WHERE id=?
-            """,
+            """
+            ,
             (status, reversed_entry_id, item_id),
         )
         conn.commit()
+        conn.execute(
+            """
+            INSERT INTO reversing_entry_history(queue_id, field, old_value, new_value)
+            VALUES (?, 'status', ?, ?)
+            """,
+            (item_id, old_status, status),
+        )
+        conn.commit()
+        
     finally:
         if not owned:
             conn.close()
@@ -1190,3 +1296,138 @@ def export_text_to_excel(lines: Iterable[str], output_path: Path, *, sheet_name:
     wb.save(str(output_path))
 
 
+def create_reversing_template(
+    name: str,
+    *,
+    entry_type: Optional[str] = None,
+    required_fields: Optional[Dict[str, Any]] = None,
+    default_memo: Optional[str] = None,
+    authorization_level: int = 0,
+    approval_required: int = 0,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO reversing_entry_templates(name, entry_type, required_fields, default_memo, authorization_level, approval_required)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                entry_type,
+                json.dumps(required_fields or {}),
+                default_memo,
+                int(authorization_level),
+                int(approval_required),
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+def list_reversing_templates(*, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, name, entry_type, required_fields, default_memo, authorization_level, approval_required, is_active FROM reversing_entry_templates ORDER BY name"
+        )
+        return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+def add_reversing_approval(
+    queue_id: int,
+    reviewer: Optional[str] = None,
+    *,
+    role: Optional[str] = None,
+    level: int = 0,
+    status: str = "pending",
+    approved_on: Optional[str] = None,
+    notes: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO reversing_entry_approvals(queue_id, reviewer, role, level, status, approved_on, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (queue_id, reviewer, role, int(level), status, approved_on, notes),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+def get_reversing_approvals(queue_id: int, *, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, reviewer, role, level, status, approved_on, notes FROM reversing_entry_approvals WHERE queue_id=? ORDER BY level, id",
+            (queue_id,),
+        )
+        return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+def set_reversing_deadline(item_id: int, deadline_on: str, *, conn: Optional[sqlite3.Connection] = None) -> None:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        prev = conn.execute("SELECT deadline_on FROM reversing_entry_queue WHERE id=?", (item_id,)).fetchone()
+        old = prev["deadline_on"] if prev else None
+        conn.execute("UPDATE reversing_entry_queue SET deadline_on=? WHERE id=?", (deadline_on, item_id))
+        conn.commit()
+        conn.execute(
+            "INSERT INTO reversing_entry_history(queue_id, field, old_value, new_value) VALUES (?, 'deadline_on', ?, ?)",
+            (item_id, old, deadline_on),
+        )
+        conn.commit()
+    finally:
+        if not owned:
+            conn.close()
+
+def is_reversing_ready(queue_id: int, *, conn: Optional[sqlite3.Connection] = None) -> bool:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        rq = conn.execute(
+            "SELECT approval_required, authorization_level FROM reversing_entry_queue WHERE id=?",
+            (queue_id,),
+        ).fetchone()
+        if not rq:
+            return True
+        req = int(rq["approval_required"] or 0)
+        level_needed = int(rq["authorization_level"] or 0)
+        if req == 0:
+            return True
+        cur = conn.execute(
+            "SELECT MIN(level) AS min_level, SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved_count FROM reversing_entry_approvals WHERE queue_id=?",
+            (queue_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        min_level = int(row["min_level"] or 0)
+        approved_count = int(row["approved_count"] or 0)
+        return approved_count > 0 and min_level <= level_needed
+    finally:
+        if not owned:
+            conn.close()

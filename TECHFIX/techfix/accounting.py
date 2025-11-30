@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from pathlib import Path
 import sqlite3
 
 from . import db
@@ -332,15 +333,27 @@ class AccountingEngine:
                 try:
                     status = r['status'] if 'status' in r.keys() else 'pending'
                     when = r['reverse_on'] if 'reverse_on' in r.keys() else None
+                    deadline = r['deadline_on'] if 'deadline_on' in r.keys() else None
+                    reminder = r['reminder_on'] if 'reminder_on' in r.keys() else None
+                    qid = int(r['id']) if 'id' in r.keys() else None
                     if status != 'pending' or not when:
                         continue
                     if str(when) > str(cutoff):
+                        continue
+                    if reminder and str(reminder) <= str(cutoff) and qid:
+                        db.log_audit(action='reversing_reminder', details=f"queue:{qid} reverse_on:{when}", user='system', conn=self.conn)
+                    ready = True
+                    if qid:
+                        ready = db.is_reversing_ready(qid, conn=self.conn)
+                    if not ready:
                         continue
                     eid = int(r['original_entry_id'])
                     rid = self.reverse_entry(eid, when)
                     if rid:
                         created.append(int(rid))
                         db.update_reversing_status(int(r['id']), 'completed', reversed_entry_id=int(rid), conn=self.conn)
+                        if deadline and str(deadline) < str(cutoff):
+                            db.log_audit(action='reversing_past_deadline', details=f"queue:{qid} reversed:{rid}", user='system', conn=self.conn)
                 except Exception:
                     pass
             if created:
@@ -348,6 +361,62 @@ class AccountingEngine:
             return created
         except Exception:
             return created
+
+    def apply_reversing_template(self, entry_id: int, template_id: int, reverse_on: str, *, memo: Optional[str] = None, notes: Optional[str] = None) -> int:
+        tpl_rows = db.list_reversing_templates(conn=self.conn)
+        tpl = next((t for t in tpl_rows if int(t['id']) == int(template_id)), None)
+        if not tpl:
+            return db.schedule_reversing_entry(entry_id, reverse_on, conn=self.conn)
+        return db.schedule_reversing_entry(
+            entry_id,
+            reverse_on,
+            deadline_on=reverse_on,
+            entry_type=tpl['entry_type'],
+            template_id=int(tpl['id']),
+            priority='normal',
+            reminder_on=reverse_on,
+            notes=notes or memo or tpl['default_memo'],
+            approval_required=int(tpl['approval_required'] or 0),
+            authorization_level=int(tpl['authorization_level'] or 0),
+            conn=self.conn,
+        )
+
+    def generate_reversing_report(self, as_of: Optional[str] = None) -> Dict[str, object]:
+        if not self.current_period_id:
+            return {"error": "No active period"}
+        rows = db.list_reversing_queue(self.current_period_id, conn=self.conn)
+        today = as_of or datetime.utcnow().date().isoformat()
+        pending = [r for r in rows if r['status'] == 'pending']
+        overdue = [r for r in pending if r['deadline_on'] and str(r['deadline_on']) < str(today)]
+        awaiting_approval = []
+        for r in pending:
+            qid = int(r['id'])
+            if int(r['approval_required'] or 0) == 1 and not db.is_reversing_ready(qid, conn=self.conn):
+                awaiting_approval.append(r)
+        completed = [r for r in rows if r['status'] == 'completed']
+        summary = {
+            'pending': len(pending),
+            'completed': len(completed),
+            'overdue': len(overdue),
+            'awaiting_approval': len(awaiting_approval),
+        }
+        return {'summary': summary, 'pending': pending, 'overdue': overdue, 'awaiting_approval': awaiting_approval, 'completed': completed}
+
+    def export_reversing_report_csv(self, output_path: str, as_of: Optional[str] = None) -> None:
+        report = self.generate_reversing_report(as_of)
+        rows = []
+        for section in ('pending', 'overdue', 'awaiting_approval', 'completed'):
+            for r in report.get(section, []):
+                rows.append((section, r['id'], r['original_entry_id'], r['reverse_on'], r['deadline_on'], r['status'], r['entry_type'], r['priority']))
+        db.export_rows_to_csv(rows, headers=['section','id','original_entry_id','reverse_on','deadline_on','status','entry_type','priority'], output_path=Path(output_path))
+
+    def export_reversing_report_excel(self, output_path: str, as_of: Optional[str] = None) -> None:
+        report = self.generate_reversing_report(as_of)
+        rows = []
+        for section in ('pending', 'overdue', 'awaiting_approval', 'completed'):
+            for r in report.get(section, []):
+                rows.append((section, r['id'], r['original_entry_id'], r['reverse_on'], r['deadline_on'], r['status'], r['entry_type'], r['priority']))
+        db.export_rows_to_excel(rows, headers=['section','id','original_entry_id','reverse_on','deadline_on','status','entry_type','priority'], output_path=Path(output_path), sheet_name='Reversing Report')
 
     @property
     def current_period_id(self) -> Optional[int]:

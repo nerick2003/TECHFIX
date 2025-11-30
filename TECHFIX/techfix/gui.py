@@ -1864,6 +1864,387 @@ class TechFixApp(tk.Tk):
             except Exception:
                 self._audit('document_preview_error', {'file': filename})
             
+    def _scan_source_document(self) -> None:
+        try:
+            self.txn_prefill_status.configure(text="Opening camera…")
+        except Exception:
+            pass
+        try:
+            import threading
+            import time
+            try:
+                import cv2
+            except Exception:
+                ok = False
+                try:
+                    ok = self._attempt_install_packages(["opencv-python"])
+                except Exception:
+                    ok = False
+                if ok:
+                    try:
+                        import cv2
+                    except Exception:
+                        cv2 = None  # type: ignore
+                else:
+                    cv2 = None  # type: ignore
+                if cv2 is None:
+                    messagebox.showerror("Scan", "Camera library not available. Install opencv-python")
+                    try:
+                        self.txn_prefill_status.configure(text="Scan error: camera library missing")
+                    except Exception:
+                        pass
+                    return
+            try:
+                from pyzbar.pyzbar import decode as zbar_decode
+            except Exception:
+                ok = False
+                try:
+                    ok = self._attempt_install_packages(["pyzbar"])
+                except Exception:
+                    ok = False
+                if ok:
+                    try:
+                        from pyzbar.pyzbar import decode as zbar_decode
+                    except Exception:
+                        zbar_decode = None  # type: ignore
+                else:
+                    zbar_decode = None  # type: ignore
+            try:
+                from PIL import Image, ImageTk
+            except Exception:
+                ok = False
+                try:
+                    ok = self._attempt_install_packages(["Pillow"])
+                except Exception:
+                    ok = False
+                if ok:
+                    try:
+                        from PIL import Image, ImageTk
+                    except Exception:
+                        messagebox.showerror("Scan", "Image toolkit not available. Install Pillow")
+                        try:
+                            self.txn_prefill_status.configure(text="Scan error: Pillow missing")
+                        except Exception:
+                            pass
+                        return
+                else:
+                    messagebox.showerror("Scan", "Image toolkit not available. Install Pillow")
+                    try:
+                        self.txn_prefill_status.configure(text="Scan error: Pillow missing")
+                    except Exception:
+                        pass
+                    return
+
+            class ScanWindow(tk.Toplevel):
+                def __init__(self, parent):
+                    super().__init__(parent)
+                    self.title("Scan Source Document")
+                    self.geometry("720x520")
+                    self.resizable(False, False)
+                    self.protocol('WM_DELETE_WINDOW', self._on_close)
+                    self._running = True
+                    top = ttk.Frame(self)
+                    top.pack(fill=tk.X, padx=8, pady=6)
+                    self.status = ttk.Label(top, text="Point camera at QR/barcode…", style="Techfix.TLabel")
+                    self.status.pack(side=tk.LEFT)
+                    self.preview = ttk.Label(self)
+                    self.preview.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+                    self.cap = cv2.VideoCapture(0)
+                    if not self.cap or not self.cap.isOpened():
+                        self.status.configure(text="Camera access failed")
+                        messagebox.showerror("Scan", "Cannot access camera. Check permissions/device.")
+                        self._running = False
+                        return
+                    self._frame_loop()
+                def _frame_loop(self):
+                    if not self._running:
+                        return
+                    ret, frame = self.cap.read()
+                    if ret:
+                        try:
+                            import numpy as np  # optional if present
+                        except Exception:
+                            np = None
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        payload = None
+                        codes = []
+                        if zbar_decode:
+                            try:
+                                codes = zbar_decode(gray)
+                            except Exception:
+                                codes = []
+                            if codes:
+                                try:
+                                    payload = codes[0].data.decode('utf-8', errors='replace')
+                                except Exception:
+                                    payload = None
+                        if payload is None:
+                            try:
+                                detector = cv2.QRCodeDetector()
+                                data, points, _ = detector.detectAndDecode(gray)
+                                if points is not None and data:
+                                    payload = data
+                            except Exception:
+                                pass
+                        if payload:
+                            self.status.configure(text="Code detected – processing…")
+                            self._running = False
+                            self._apply_payload(payload)
+                            self._cleanup()
+                            return
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        img = Image.fromarray(rgb)
+                        img = img.resize((704, 396))
+                        imgtk = ImageTk.PhotoImage(image=img)
+                        self.preview.configure(image=imgtk)
+                        self.preview.imgtk = imgtk
+                    try:
+                        self.after(30, self._frame_loop)
+                    except Exception:
+                        pass
+                def _apply_payload(self, text: str):
+                    try:
+                        data = self.master._parse_scanned_payload(text)
+                    except Exception:
+                        data = None
+                    if not data:
+                        try:
+                            self.master.txn_prefill_status.configure(text="Scan error: invalid data format")
+                        except Exception:
+                            pass
+                        messagebox.showerror("Scan", "Invalid code format. Expected JSON or key=value pairs.")
+                        return
+                    try:
+                        self.master._apply_scanned_data(data)
+                        self.master.txn_prefill_status.configure(text="Scan successful – fields populated")
+                    except Exception:
+                        messagebox.showerror("Scan", "Failed to apply scanned data")
+                def _cleanup(self):
+                    try:
+                        if self.cap:
+                            self.cap.release()
+                    except Exception:
+                        pass
+                    try:
+                        self.destroy()
+                    except Exception:
+                        pass
+                def _on_close(self):
+                    self._running = False
+                    self._cleanup()
+
+            ScanWindow(self)
+        except Exception:
+            try:
+                self.txn_prefill_status.configure(text="Scan failed")
+            except Exception:
+                pass
+    def _attempt_install_packages(self, pkgs: list[str]) -> bool:
+        try:
+            exe = sys.executable
+            for p in pkgs:
+                try:
+                    subprocess.check_call([exe, '-m', 'pip', 'install', p])
+                except Exception:
+                    return False
+            return True
+        except Exception:
+            return False
+
+    def _parse_scanned_payload(self, text: str) -> dict | None:
+        try:
+            s = text.strip()
+            if not s:
+                return None
+            if s.startswith('{') and s.endswith('}'):
+                try:
+                    d = json.loads(s)
+                except Exception:
+                    d = None
+            else:
+                d = {}
+                parts = [p for p in s.replace('|', '&').split('&') if p]
+                for p in parts:
+                    if '=' in p:
+                        k, v = p.split('=', 1)
+                        d[k.strip()] = v.strip()
+            if not isinstance(d, dict):
+                return None
+            # Normalize keys
+            m = {}
+            def get(*keys):
+                for k in keys:
+                    if k in d:
+                        return d[k]
+                return None
+            m['date'] = get('date')
+            m['source_type'] = get('source_type','source')
+            m['document_ref'] = get('document_ref','doc_no','doc','reference')
+            m['external_ref'] = get('external_ref','ext_ref')
+            m['description'] = get('description','desc')
+            m['debit_amount'] = get('debit_amount','debit','amount')
+            m['credit_amount'] = get('credit_amount','credit','amount')
+            m['memo'] = get('memo','note')
+            # Remove empty
+            m = {k:v for k,v in m.items() if v not in (None,'')}
+            return m or None
+        except Exception:
+            return None
+
+    def _apply_scanned_data(self, data: dict) -> None:
+        try:
+            # Use existing prefill and auto-entry helpers
+            def _set_entry(w, v):
+                try:
+                    if w and v is not None:
+                        w.delete(0, tk.END); w.insert(0, str(v))
+                        return True
+                except Exception:
+                    pass
+                return False
+            if hasattr(self, 'txn_date') and data.get('date'):
+                _set_entry(self.txn_date, data.get('date'))
+            if hasattr(self, 'txn_desc') and data.get('description'):
+                _set_entry(self.txn_desc, data.get('description'))
+            if hasattr(self, 'txn_doc_ref') and data.get('document_ref'):
+                _set_entry(self.txn_doc_ref, data.get('document_ref'))
+            if hasattr(self, 'txn_external_ref') and data.get('external_ref'):
+                _set_entry(self.txn_external_ref, data.get('external_ref'))
+            if hasattr(self, 'txn_source_type') and data.get('source_type'):
+                try:
+                    self.txn_source_type.set(data.get('source_type'))
+                except Exception:
+                    pass
+            if hasattr(self, 'txn_memo') and data.get('memo'):
+                try:
+                    self.txn_memo.delete('1.0', tk.END); self.txn_memo.insert('1.0', data.get('memo'))
+                except Exception:
+                    pass
+            try:
+                sugg = self._auto_entry_from_data(data, data.get('document_ref') or '')
+            except Exception:
+                sugg = {}
+            dd = sugg.get('debit_account_display')
+            cc = sugg.get('credit_account_display')
+            if dd or cc:
+                try:
+                    self._set_accounts(dd, cc)
+                except Exception:
+                    pass
+            if hasattr(self, 'debit_amt') and (data.get('debit_amount') is not None or sugg.get('debit_amount') is not None):
+                v = data.get('debit_amount', sugg.get('debit_amount'))
+                try:
+                    self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, f"{float(v):.2f}")
+                except Exception:
+                    pass
+            if hasattr(self, 'credit_amt') and (data.get('credit_amount') is not None or sugg.get('credit_amount') is not None):
+                v = data.get('credit_amount', sugg.get('credit_amount'))
+                try:
+                    self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, f"{float(v):.2f}")
+                except Exception:
+                    pass
+            try:
+                ok_accounts = self._validate_accounts_assigned()
+                ok_amounts = self._validate_amounts_present()
+                msg = "Prefilled from scan" + (" (ok)" if (ok_accounts and ok_amounts) else " (missing)")
+                self.txn_prefill_status.configure(text=msg)
+            except Exception:
+                pass
+        except Exception:
+            try:
+                self.txn_prefill_status.configure(text="Scan apply failed")
+            except Exception:
+                pass
+
+    def _scan_from_image_file(self) -> None:
+        try:
+            from tkinter import filedialog
+            import os
+            path = filedialog.askopenfilename(title="Select image to scan", filetypes=[('Images','*.png;*.jpg;*.jpeg;*.bmp;*.gif')])
+            if not path:
+                return
+            try:
+                from pyzbar.pyzbar import decode as zbar_decode
+            except Exception:
+                zbar_decode = None  # type: ignore
+            try:
+                from PIL import Image
+            except Exception:
+                messagebox.showerror("Scan", "Image toolkit not available")
+                return
+            payload = None
+            if zbar_decode:
+                try:
+                    img = Image.open(path)
+                    res = zbar_decode(img)
+                    if res:
+                        try:
+                            payload = res[0].data.decode('utf-8', errors='replace')
+                        except Exception:
+                            payload = None
+                except Exception:
+                    payload = None
+            if payload is None:
+                try:
+                    import cv2
+                    detector = cv2.QRCodeDetector()
+                    im = cv2.imread(path)
+                    if im is not None:
+                        data, points, _ = detector.detectAndDecode(im)
+                        if points is not None and data:
+                            payload = data
+                except Exception:
+                    pass
+            if not payload:
+                messagebox.showerror("Scan", "No code detected in image")
+                return
+            try:
+                data = self._parse_scanned_payload(payload)
+            except Exception:
+                data = None
+            if not data:
+                messagebox.showerror("Scan", "Invalid code data in image")
+                return
+            try:
+                self._apply_scanned_data(data)
+                if hasattr(self, 'txn_prefill_status'):
+                    self.txn_prefill_status.configure(text="Scan from image successful")
+            except Exception:
+                messagebox.showerror("Scan", "Failed to apply data from image")
+        except Exception:
+            try:
+                self.txn_prefill_status.configure(text="Scan from image failed")
+            except Exception:
+                pass
+    def _generate_test_codes(self) -> None:
+        try:
+            from . import scanner  # type: ignore
+        except Exception:
+            try:
+                import os, sys
+                sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+                from techfix import scanner  # type: ignore
+            except Exception:
+                scanner = None  # type: ignore
+        if not scanner:
+            messagebox.showerror("Test Codes", "Scanner module not available")
+            return
+        try:
+            import os
+            out_dir = os.path.join(str(db.DB_DIR), 'mock_codes')
+            os.makedirs(out_dir, exist_ok=True)
+            files = scanner.generate_mock_codes(out_dir)
+            if files:
+                self.txn_prefill_status.configure(text=f"Generated {len(files)} test codes")
+                # Open folder for convenience
+                try:
+                    os.startfile(out_dir)
+                except Exception:
+                    pass
+            else:
+                messagebox.showwarning("Test Codes", "No codes generated")
+        except Exception as e:
+            messagebox.showerror("Test Codes", f"Failed to generate codes: {e}")
     def _prefill_from_source_document(self, filename: str) -> None:
         try:
             import os, json, csv
@@ -2636,8 +3017,32 @@ class TechFixApp(tk.Tk):
             width=8
         )
         browse_btn.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        scan_btn = ttk.Button(
+            attach_frame,
+            text="Scan",
+            command=self._scan_source_document,
+            style="Techfix.TButton",
+            width=8
+        )
+        scan_btn.grid(row=0, column=2, sticky="e", padx=(4, 0))
+        scan_img_btn = ttk.Button(
+            attach_frame,
+            text="Scan From Image…",
+            command=self._scan_from_image_file,
+            style="Techfix.TButton",
+            width=18
+        )
+        scan_img_btn.grid(row=0, column=3, sticky="e", padx=(4, 0))
+        test_btn = ttk.Button(
+            attach_frame,
+            text="Test Codes",
+            command=self._generate_test_codes,
+            style="Techfix.TButton",
+            width=10
+        )
+        test_btn.grid(row=0, column=4, sticky="e", padx=(4, 0))
         self.txn_prefill_status = ttk.Label(attach_frame, text="", style="Techfix.TLabel")
-        self.txn_prefill_status.grid(row=1, column=0, columnspan=2, sticky="w", padx=(0,4), pady=(4,0))
+        self.txn_prefill_status.grid(row=1, column=0, columnspan=5, sticky="w", padx=(0,4), pady=(4,0))
 
 
         # Compact memo field
@@ -5182,7 +5587,14 @@ class TechFixApp(tk.Tk):
                 elif account_type == 'liability':
                     liabilities.append((row['name'], balance))
                 elif account_type == 'equity':
-                    equity.append((row['name'], balance))
+                    try:
+                        if (row['normal_side'] or '').lower() == 'debit':
+                            amount = -abs(balance)
+                        else:
+                            amount = balance
+                    except Exception:
+                        amount = balance
+                    equity.append((row['name'], amount))
             
             # Helper to format amounts (use parentheses for negative values)
             def fmt(a: float) -> str:
@@ -5640,7 +6052,13 @@ class TechFixApp(tk.Tk):
         try:
             rows = self.engine.list_reversing_queue()
             for r in rows:
-                self.reversing_tree.insert('', 'end', values=(r['id'], r['original_entry_id'], r['reverse_on'], r.get('reversed_entry_id') if 'reversed_entry_id' in r.keys() else '', r['status']))
+                self.reversing_tree.insert('', 'end', values=(
+                    r['id'],
+                    r['original_entry_id'],
+                    r['reverse_on'],
+                    r['reversed_entry_id'] if 'reversed_entry_id' in r.keys() else '',
+                    r['status'],
+                ))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load reversing queue: {e}")
 
@@ -6112,6 +6530,77 @@ class TechFixApp(tk.Tk):
                 ws_tb.cell(row=total_row, column=4, value=f"=SUM({dcol}2:{dcol}{last_tb})")
             for i, _ in enumerate(tb_headers, start=1):
                 ws_tb.column_dimensions[get_column_letter(i)].width = 15
+
+            ws_w = wb.create_sheet(title="Worksheet")
+            ws_w.append([
+                "Account No.",
+                "Account Title",
+                "Unadjusted Trial Balance Dr",
+                "Unadjusted Trial Balance Cr",
+                "Adjustments Dr",
+                "Adjustments Cr",
+                "Adjusted Trial Balance Dr",
+                "Adjusted Trial Balance Cr",
+                "Statement of Financial Performance Dr",
+                "Statement of Financial Performance Cr",
+                "Statement of Financial Position Dr",
+                "Statement of Financial Position Cr",
+            ])
+            def _tb_filtered(is_adjusting=None):
+                where = "a.is_active=1 AND je.period_id = ?"
+                params = [self.engine.current_period_id]
+                if is_adjusting is not None:
+                    where += " AND je.is_adjusting = ?"
+                    params.append(1 if is_adjusting else 0)
+                balance = "(COALESCE(SUM(jl.debit),0) - COALESCE(SUM(jl.credit),0))"
+                sql = f"""
+                    SELECT a.code, a.name, a.type,
+                           ROUND(CASE WHEN {balance} > 0 THEN {balance} ELSE 0 END,2) AS net_debit,
+                           ROUND(CASE WHEN {balance} < 0 THEN -({balance}) ELSE 0 END,2) AS net_credit
+                    FROM accounts a
+                    LEFT JOIN journal_lines jl ON jl.account_id = a.id
+                    LEFT JOIN journal_entries je ON je.id = jl.entry_id
+                    WHERE {where}
+                    GROUP BY a.id, a.code, a.name, a.type
+                    ORDER BY a.code
+                """
+                cur = self.engine.conn.execute(sql, params)
+                return list(cur.fetchall())
+            unadj = _tb_filtered(False)
+            adjs = _tb_filtered(True)
+            adj_tb_rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
+            un_by_code = {r["code"]: r for r in unadj}
+            adj_by_code = {r["code"]: r for r in adjs}
+            adjtb_by_code = {r["code"]: r for r in adj_tb_rows}
+            codes = sorted(set(list(un_by_code.keys()) + list(adj_by_code.keys()) + list(adjtb_by_code.keys())))
+            totals = {"un_dr":0.0,"un_cr":0.0,"aj_dr":0.0,"aj_cr":0.0,"ad_dr":0.0,"ad_cr":0.0,"is_dr":0.0,"is_cr":0.0,"sfp_dr":0.0,"sfp_cr":0.0}
+            for code in codes:
+                ru = un_by_code.get(code)
+                ra = adj_by_code.get(code)
+                rt = adjtb_by_code.get(code)
+                name = (rt or ru or ra)["name"]
+                typ = (rt or ru or ra)["type"]
+                un_dr = float(ru["net_debit"]) if ru else 0.0
+                un_cr = float(ru["net_credit"]) if ru else 0.0
+                aj_dr = float(ra["net_debit"]) if ra else 0.0
+                aj_cr = float(ra["net_credit"]) if ra else 0.0
+                ad_dr = float(rt["net_debit"]) if rt else 0.0
+                ad_cr = float(rt["net_credit"]) if rt else 0.0
+                is_dr = ad_dr if typ.lower() in ("revenue","expense") and ad_dr>0 else 0.0
+                is_cr = ad_cr if typ.lower() in ("revenue","expense") and ad_cr>0 else 0.0
+                sfp_dr = ad_dr if typ.lower() not in ("revenue","expense") and ad_dr>0 else 0.0
+                sfp_cr = ad_cr if typ.lower() not in ("revenue","expense") and ad_cr>0 else 0.0
+                ws_w.append([code, name, un_dr, un_cr, aj_dr, aj_cr, ad_dr, ad_cr, is_dr, is_cr, sfp_dr, sfp_cr])
+                totals["un_dr"] += un_dr; totals["un_cr"] += un_cr
+                totals["aj_dr"] += aj_dr; totals["aj_cr"] += aj_cr
+                totals["ad_dr"] += ad_dr; totals["ad_cr"] += ad_cr
+                totals["is_dr"] += is_dr; totals["is_cr"] += is_cr
+                totals["sfp_dr"] += sfp_dr; totals["sfp_cr"] += sfp_cr
+            ws_w.append(["TOTAL","", totals["un_dr"], totals["un_cr"], totals["aj_dr"], totals["aj_cr"], totals["ad_dr"], totals["ad_cr"], totals["is_dr"], totals["is_cr"], totals["sfp_dr"], totals["sfp_cr"]])
+            net_income = round(totals["is_cr"] - totals["is_dr"], 2)
+            if net_income != 0:
+                ws_w.append(["PROFIT/LOSS","", "", "", "", "", "", "", 0.0 if net_income>0 else abs(net_income), net_income if net_income>0 else 0.0, "", ""])
+                ws_w.append(["TOTAL","", totals["un_dr"], totals["un_cr"], totals["aj_dr"], totals["aj_cr"], totals["ad_dr"], totals["ad_cr"], totals["is_dr"] + (0.0 if net_income>0 else abs(net_income)), totals["is_cr"] + (net_income if net_income>0 else 0.0), totals["sfp_dr"], totals["sfp_cr"]])
 
             # --- Financial statements sheets ---
             # Income Statement
