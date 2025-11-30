@@ -334,6 +334,7 @@ def seed_chart_of_accounts(conn: Optional[sqlite3.Connection] = None) -> None:
             ("167", "Equipment", "Asset", "Debit", 1),
             ("168", "Accumulated Depreciation - Equipment", "Contra Asset", "Credit", 1),
             ("201", "Accounts Payable", "Liability", "Credit", 1),
+            ("213", "Utilities Payable", "Liability", "Credit", 1),
             ("212", "Salaries Payable", "Liability", "Credit", 1),
             ("230", "Unearned Revenue", "Liability", "Credit", 1),
             ("301", "Owner's Capital", "Equity", "Credit", 1),

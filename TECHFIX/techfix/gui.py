@@ -125,6 +125,9 @@ class TechFixApp(tk.Tk):
         self._nav_buttons: list = []
         self.period_form_cache: Dict[int, Dict[str, str]] = {}
         self._last_period_id: Optional[int] = self.current_period_id
+        self._accounts_prefilled: bool = False
+        self._accounts_modified_manually: bool = False
+        self._rules_map: dict = {}
 
         self.style = ttk.Style(self)
         # Initialize theme and palette before building UI
@@ -140,6 +143,10 @@ class TechFixApp(tk.Tk):
         self._load_periods()
         self._update_theme_widgets()
         self._load_all_views()
+        try:
+            self._load_inference_rules()
+        except Exception:
+            pass
 
         try:
             self._start_theme_monitor()
@@ -175,6 +182,11 @@ class TechFixApp(tk.Tk):
             if getattr(self, '_theme_animating', False):
                 return
             self._animate_theme_switch(name)
+            try:
+                self._apply_resize_layout()
+                self._capture_ui_snapshot(label=f"theme:{name}")
+            except Exception:
+                pass
         except Exception:
             # Fallback to immediate apply if animation fails
             self.theme_name = name
@@ -913,10 +925,23 @@ class TechFixApp(tk.Tk):
             pass
 
     def _on_window_resize(self, event=None):
+        try:
+            if hasattr(self, '_resize_after_id') and self._resize_after_id:
+                try:
+                    self.after_cancel(self._resize_after_id)
+                except Exception:
+                    pass
+            def _apply():
+                self._apply_resize_layout()
+                self._resize_after_id = None
+            self._resize_after_id = self.after(120, _apply)
+        except Exception:
+            pass
+
+    def _apply_resize_layout(self) -> None:
         if hasattr(self, 'main_frame') and hasattr(self.main_frame, 'winfo_children'):
             self.main_frame.update_idletasks()
         try:
-            # Auto-scale cycle table columns
             if hasattr(self, 'cycle_tree'):
                 total = self.cycle_tree.winfo_width() or 1
                 col_defs = {
@@ -931,10 +956,8 @@ class TechFixApp(tk.Tk):
                         self.cycle_tree.column(c, width=max(60, w))
                     except Exception:
                         pass
-            # Ensure notebook grows with window
             if hasattr(self, 'notebook'):
                 self.notebook.update_idletasks()
-            # Auto-scale closing preview columns
             if hasattr(self, 'closing_preview_tree'):
                 total = self.closing_preview_tree.winfo_width() or 1
                 widths = {
@@ -948,7 +971,6 @@ class TechFixApp(tk.Tk):
                         self.closing_preview_tree.column(c, width=max(80, w))
                     except Exception:
                         pass
-            # Auto-scale recent transactions columns
             if hasattr(self, 'txn_recent_tree'):
                 total = self.txn_recent_tree.winfo_width() or 1
                 col_defs = {
@@ -964,7 +986,6 @@ class TechFixApp(tk.Tk):
                         self.txn_recent_tree.column(c, width=max(80, w), stretch=(c == 'description'))
                     except Exception:
                         pass
-            # Auto-scale journal columns
             if hasattr(self, 'journal_tree'):
                 total = self.journal_tree.winfo_width() or 1
                 col_defs = {
@@ -1344,10 +1365,7 @@ class TechFixApp(tk.Tk):
                 self.txn_date.delete(0, tk.END); self.txn_date.insert(0, snap.get('date', ''))
             if 'desc' in snap and hasattr(self, 'txn_desc'):
                 self.txn_desc.delete(0, tk.END); self.txn_desc.insert(0, snap.get('desc', ''))
-            if 'debit_acct' in snap and hasattr(self, 'debit_acct'):
-                self.debit_acct.set(snap.get('debit_acct', ''))
-            if 'credit_acct' in snap and hasattr(self, 'credit_acct'):
-                self.credit_acct.set(snap.get('credit_acct', ''))
+            
             if 'debit_amt' in snap and hasattr(self, 'debit_amt'):
                 self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, snap.get('debit_amt', ''))
             if 'credit_amt' in snap and hasattr(self, 'credit_amt'):
@@ -1393,14 +1411,7 @@ class TechFixApp(tk.Tk):
                 """,
                 (int(row['id']),)
             ).fetchall()
-            debit_line = next((l for l in lines if (l['debit'] or 0) > 0), None)
-            credit_line = next((l for l in lines if (l['credit'] or 0) > 0), None)
-            if debit_line and hasattr(self, 'debit_acct') and hasattr(self, 'debit_amt'):
-                self.debit_acct.set(f"{debit_line['code']} - {debit_line['name']}")
-                self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, f"{float(debit_line['debit']):.2f}")
-            if credit_line and hasattr(self, 'credit_acct') and hasattr(self, 'credit_amt'):
-                self.credit_acct.set(f"{credit_line['code']} - {credit_line['name']}")
-                self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, f"{float(credit_line['credit']):.2f}")
+            # Do not prefill accounts/amounts from last entry to avoid unintended defaults
         except Exception:
             pass
 
@@ -1559,6 +1570,7 @@ class TechFixApp(tk.Tk):
         self.tab_closing = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
         self.tab_postclosing = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
         self.tab_export = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_audit = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
 
         self._build_transactions_tab()
         self._build_journal_tab()
@@ -1569,6 +1581,7 @@ class TechFixApp(tk.Tk):
         self._build_closing_tab()
         self._build_postclosing_tab()
         self._build_export_tab()
+        self._build_audit_tab()
 
         # Build simple sidebar navigation (shows/hides content frames)
         # Add a profile/header area inside the sidebar
@@ -1634,6 +1647,7 @@ class TechFixApp(tk.Tk):
         make_nav("Closing", 6, "🔒")
         make_nav("Post-Closing", 7, "📈")
         make_nav("Export", 8, "⬇️")
+        make_nav("Audit Log", 9, "🧪")
 
         # Keep an ordered list of the content frames to show/hide
         self._tab_frames = [
@@ -1646,6 +1660,7 @@ class TechFixApp(tk.Tk):
             self.tab_closing,
             self.tab_postclosing,
             self.tab_export,
+            self.tab_audit,
         ]
 
         exit_wrap = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
@@ -1784,24 +1799,389 @@ class TechFixApp(tk.Tk):
             messagebox.showerror("Error", f"Failed to reset cycle steps: {e}")
 
     def _browse_source_document(self):
-        """Open a file dialog to select a source document."""
         filetypes = [
-            ('All supported files', '*.pdf;*.jpg;*.jpeg;*.png;*.doc;*.docx;*.xls;*.xlsx'),
+            ('All supported files', '*.pdf;*.jpg;*.jpeg;*.png;*.doc;*.docx;*.xls;*.xlsx;*.json;*.csv'),
             ('PDF files', '*.pdf'),
             ('Image files', '*.jpg;*.jpeg;*.png'),
             ('Word documents', '*.doc;*.docx'),
             ('Excel files', '*.xls;*.xlsx'),
+            ('Data files', '*.json;*.csv'),
             ('All files', '*.*')
         ]
-        
+        initial_dir = getattr(self, 'doc_library_dir', None)
         filename = filedialog.askopenfilename(
             title="Select Source Document",
             filetypes=filetypes,
-            defaultextension=".pdf"
+            defaultextension=".pdf",
+            initialdir=initial_dir if initial_dir else None
         )
-        
         if filename:
             self.txn_attachment_path.set(filename)
+            try:
+                if hasattr(self, 'txn_prefill_status'):
+                    self.txn_prefill_status.configure(text="Document attached")
+            except Exception:
+                pass
+            try:
+                import os
+                self._audit('document_selected', {'file': filename, 'exists': os.path.exists(filename), 'readable': os.access(filename, os.R_OK)})
+                if 'SampleSourceDocs' in filename:
+                    sj = os.path.splitext(filename)[0] + '.json'
+                    self._audit('sample_docs_sidecar', {'file': filename, 'sidecar': sj, 'sidecar_exists': os.path.exists(sj), 'sidecar_readable': os.access(sj, os.R_OK)})
+                try:
+                    self._append_recent_document(filename)
+                    if hasattr(self, 'doc_recent_cb'):
+                        self.doc_recent_cb.configure(values=getattr(self, '_recent_docs', []))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            try:
+                # Keep existing assignments unless new document provides accounts explicitly
+                self._accounts_prefilled = False
+            except Exception:
+                pass
+            try:
+                self._prefill_date_from_source_document(filename)
+            except Exception:
+                self._audit('document_prefill_error', {'file': filename, 'stage': 'date'})
+            try:
+                self._prefill_amounts_from_source_document(filename)
+            except Exception:
+                self._audit('document_prefill_error', {'file': filename, 'stage': 'amounts'})
+            try:
+                self._prefill_from_source_document(filename)
+            except Exception:
+                self._audit('document_prefill_error', {'file': filename, 'stage': 'structured'})
+            try:
+                ok_accounts = self._validate_accounts_assigned()
+                ok_amounts = self._validate_amounts_present()
+                self._audit('document_prefill_summary', {'file': filename, 'accounts_ok': ok_accounts, 'amounts_ok': ok_amounts, 'debit': (self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else None), 'credit': (self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else None), 'debit_acct': (self.debit_acct.get().strip() if hasattr(self, 'debit_acct') else None), 'credit_acct': (self.credit_acct.get().strip() if hasattr(self, 'credit_acct') else None)})
+            except Exception:
+                pass
+            try:
+                self._load_document_preview(filename)
+            except Exception:
+                self._audit('document_preview_error', {'file': filename})
+            
+    def _prefill_from_source_document(self, filename: str) -> None:
+        try:
+            import os, json, csv
+            data = None
+            updated = []
+            side_json = os.path.splitext(filename)[0] + ".json"
+            if os.path.exists(side_json):
+                with open(side_json, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            elif filename.lower().endswith(".json"):
+                with open(filename, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            elif filename.lower().endswith(".csv"):
+                with open(filename, newline="", encoding="utf-8") as f:
+                    r = csv.DictReader(f)
+                    data = next(r, None)
+            if not data:
+                base = os.path.basename(filename)
+                name, _ = os.path.splitext(base)
+                parts = name.split("_")
+                if len(parts) >= 2:
+                    date = parts[0] if len(parts[0]) == 10 else None
+                    typ = parts[1].title()
+                    docno = parts[2] if len(parts) >= 3 else None
+                    desc_rest = " ".join(parts[3:]).replace("-", " ") if len(parts) > 3 else ""
+                    # Try to locate a nearby JSON by doc number if sidecar missing
+                    if not data and docno:
+                        try:
+                            dirpath = os.path.dirname(filename)
+                            for fn in os.listdir(dirpath):
+                                if fn.lower().endswith('.json') and docno in fn:
+                                    with open(os.path.join(dirpath, fn), 'r', encoding='utf-8') as f:
+                                        data = json.load(f)
+                                    break
+                        except Exception:
+                            pass
+                    if hasattr(self, "txn_source_type"):
+                        self.txn_source_type.set(typ if typ in ["Invoice", "Receipt", "Bank", "Adjust", "Payroll", "Other"] else "")
+                        updated.append("Source")
+                    if hasattr(self, "txn_doc_ref") and docno:
+                        try:
+                            self.txn_doc_ref.delete(0, tk.END); self.txn_doc_ref.insert(0, docno)
+                            updated.append("Document Ref")
+                        except Exception:
+                            pass
+                    if hasattr(self, "txn_desc"):
+                        try:
+                            dval = (typ + (" " + docno if docno else "") + (" " + desc_rest if desc_rest else "")).strip()
+                            self.txn_desc.delete(0, tk.END); self.txn_desc.insert(0, dval)
+                            updated.append("Description")
+                        except Exception:
+                            pass
+                    if hasattr(self, "txn_date") and date:
+                        try:
+                            self.txn_date.delete(0, tk.END); self.txn_date.insert(0, date)
+                            updated.append("Date")
+                        except Exception:
+                            pass
+                    # If we loaded data from nearby JSON, continue below to fill structured fields
+                    if data:
+                        pass
+                    else:
+                        try:
+                            pseudo = {
+                                'source_type': typ,
+                                'document_ref': docno,
+                                'description': (typ + (" " + docno if docno else "") + (" " + desc_rest if desc_rest else "")).strip(),
+                            }
+                            sugg = self._auto_entry_from_data(pseudo, filename)
+                            dd = sugg.get('debit_account_display')
+                            cc = sugg.get('credit_account_display')
+                            if dd or cc:
+                                self._set_accounts(dd, cc)
+                                updated.append("Accounts")
+                            if hasattr(self, 'txn_desc') and sugg.get('description'):
+                                _set_entry(self.txn_desc, sugg.get('description'))
+                                updated.append("Description")
+                            # continue with status update below
+                        except Exception:
+                            pass
+                elif not data:
+                    try:
+                        messagebox.showwarning("Prefill", "No structured data found in selected document. Use a matching .json/.csv or filename pattern: YYYY-MM-DD_Type_DocNo_Description")
+                    except Exception:
+                        pass
+                    return
+            def _set_entry(w, v):
+                try:
+                    if w and v is not None:
+                        w.delete(0, tk.END); w.insert(0, str(v))
+                        return True
+                except Exception:
+                    pass
+                return False
+            if hasattr(self, "txn_date") and data.get("date"):
+                if _set_entry(self.txn_date, data.get("date")):
+                    updated.append("Date")
+            if hasattr(self, "txn_desc") and data.get("description"):
+                if _set_entry(self.txn_desc, data.get("description")):
+                    updated.append("Description")
+            if hasattr(self, "txn_doc_ref") and data.get("document_ref"):
+                if _set_entry(self.txn_doc_ref, data.get("document_ref")):
+                    updated.append("Document Ref")
+            if hasattr(self, "txn_external_ref") and data.get("external_ref"):
+                if _set_entry(self.txn_external_ref, data.get("external_ref")):
+                    updated.append("External Ref")
+            if hasattr(self, "txn_source_type") and data.get("source_type"):
+                try:
+                    self.txn_source_type.set(data.get("source_type"))
+                    updated.append("Source")
+                except Exception:
+                    pass
+            if hasattr(self, "txn_memo") and data.get("memo"):
+                try:
+                    self.txn_memo.delete("1.0", tk.END); self.txn_memo.insert("1.0", data.get("memo"))
+                    updated.append("Memo")
+                except Exception:
+                    pass
+            try:
+                if isinstance(data, dict):
+                    if self._assign_accounts_from_data(data):
+                        updated.append("Accounts")
+                    else:
+                        sugg = self._auto_entry_from_data(data, filename)
+                        if sugg:
+                            dd = sugg.get('debit_account_display')
+                            cc = sugg.get('credit_account_display')
+                            if dd or cc:
+                                self._set_accounts(dd, cc)
+                                updated.append("Accounts")
+                            if hasattr(self, 'debit_amt') and sugg.get('debit_amount') is not None:
+                                _set_entry(self.debit_amt, f"{float(sugg.get('debit_amount')):.2f}")
+                                updated.append("Debit Amount")
+                            if hasattr(self, 'credit_amt') and sugg.get('credit_amount') is not None:
+                                _set_entry(self.credit_amt, f"{float(sugg.get('credit_amount')):.2f}")
+                                updated.append("Credit Amount")
+                            if hasattr(self, 'txn_desc') and sugg.get('description'):
+                                _set_entry(self.txn_desc, sugg.get('description'))
+                                updated.append("Description")
+                            if hasattr(self, 'txn_source_type') and sugg.get('source_type'):
+                                self.txn_source_type.set(sugg.get('source_type'))
+                            if hasattr(self, 'txn_doc_ref') and sugg.get('document_ref'):
+                                _set_entry(self.txn_doc_ref, sugg.get('document_ref'))
+            except Exception:
+                pass
+            if hasattr(self, "debit_amt") and data.get("debit_amount") is not None:
+                try:
+                    if _set_entry(self.debit_amt, f"{float(data.get('debit_amount')):.2f}"):
+                        updated.append("Debit Amount")
+                except Exception:
+                    pass
+            if hasattr(self, "credit_amt") and data.get("credit_amount") is not None:
+                try:
+                    if _set_entry(self.credit_amt, f"{float(data.get('credit_amount')):.2f}"):
+                        updated.append("Credit Amount")
+                except Exception:
+                    pass
+            try:
+                assigned_ok = self._validate_accounts_assigned()
+                amounts_ok = self._validate_amounts_present()
+                msg = f"Prefilled: {', '.join(updated)}" if updated else "No structured data found"
+                if hasattr(self, 'txn_prefill_status'):
+                    self.txn_prefill_status.configure(text=(msg + (" (ok)" if (assigned_ok and amounts_ok) else " (missing)")))
+                self._audit('auto_entry_validation', {'file': filename, 'accounts_ok': assigned_ok, 'amounts_ok': amounts_ok})
+                if not assigned_ok:
+                    messagebox.showwarning("Accounts", "Accounts not set from document. Please select Debit and Credit accounts.")
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _prefill_date_from_source_document(self, filename: str) -> None:
+        try:
+            import os, json, csv
+            date_val = None
+            side_json = os.path.splitext(filename)[0] + ".json"
+            if os.path.exists(side_json):
+                with open(side_json, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    date_val = d.get("date")
+            elif filename.lower().endswith(".json"):
+                with open(filename, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    date_val = d.get("date")
+            elif filename.lower().endswith(".csv"):
+                with open(filename, newline="", encoding="utf-8") as f:
+                    r = csv.DictReader(f)
+                    row = next(r, None)
+                    if row:
+                        date_val = row.get("date")
+            if not date_val:
+                base = os.path.basename(filename)
+                name, _ = os.path.splitext(base)
+                parts = name.split("_")
+                if parts and len(parts[0]) == 10:
+                    date_val = parts[0]
+            if hasattr(self, "txn_date"):
+                cur = self.txn_date.get().strip()
+                if (not cur) and date_val:
+                    try:
+                        self.txn_date.delete(0, tk.END); self.txn_date.insert(0, date_val)
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(self, 'txn_prefill_status'):
+                            self.txn_prefill_status.configure(text="Date set from document")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _prefill_amounts_from_source_document(self, filename: str) -> None:
+        try:
+            import os, json, csv
+            def parse_num(v):
+                try:
+                    import re
+                    s = str(v).strip()
+                    neg = False
+                    if s.startswith('(') and s.endswith(')'):
+                        neg = True
+                        s = s[1:-1]
+                    s = re.sub(r"[^0-9.\-]", "", s)
+                    if not s:
+                        return None
+                    val = float(s)
+                    if neg:
+                        val = -abs(val)
+                    return val
+                except Exception:
+                    return None
+            def extract_amounts(data_obj):
+                debit_val = None
+                credit_val = None
+                default_amt = None
+                if isinstance(data_obj, dict):
+                    keys = set(k.lower() for k in data_obj.keys())
+                    # direct keys
+                    for k in ("debit_amount","debit"): 
+                        if k in keys:
+                            dv = parse_num(data_obj.get(k))
+                            if dv is not None:
+                                debit_val = dv
+                    for k in ("credit_amount","credit"):
+                        if k in keys:
+                            cv = parse_num(data_obj.get(k))
+                            if cv is not None:
+                                credit_val = cv
+                    # total-like keys
+                    for k in ("amount","total","grand_total","net_amount","gross_amount","subtotal","payment_amount"):
+                        if k in keys and default_amt is None:
+                            default_amt = parse_num(data_obj.get(k))
+                    # nested lists
+                    for lk in ("lines","items","entries","details"):
+                        if lk in keys and isinstance(data_obj.get(lk), list):
+                            dv_sum = 0.0; cv_sum = 0.0; any_d=False; any_c=False
+                            for it in data_obj.get(lk):
+                                if isinstance(it, dict):
+                                    dv = parse_num(it.get("debit"))
+                                    cv = parse_num(it.get("credit"))
+                                    amt = parse_num(it.get("amount"))
+                                    if dv is not None:
+                                        dv_sum += dv; any_d=True
+                                    if cv is not None:
+                                        cv_sum += cv; any_c=True
+                                    if amt is not None and default_amt is None:
+                                        default_amt = amt
+                            if any_d and debit_val is None:
+                                debit_val = dv_sum
+                            if any_c and credit_val is None:
+                                credit_val = cv_sum
+                return debit_val, credit_val, default_amt
+            debit_val = None
+            credit_val = None
+            data = None
+            side_json = os.path.splitext(filename)[0] + ".json"
+            if os.path.exists(side_json):
+                with open(side_json, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            elif filename.lower().endswith(".json"):
+                with open(filename, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            elif filename.lower().endswith(".csv"):
+                with open(filename, newline="", encoding="utf-8") as f:
+                    r = csv.DictReader(f)
+                    data = next(r, None)
+            if isinstance(data, dict):
+                dv, cv, def_amt = extract_amounts(data)
+                debit_val = dv
+                credit_val = cv
+                if debit_val is None and credit_val is None and def_amt is not None:
+                    debit_val = def_amt
+                    credit_val = def_amt
+            # Apply to form if found
+            set_any = False
+            if hasattr(self, 'debit_amt') and debit_val is not None:
+                try:
+                    self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, f"{debit_val:.2f}")
+                    set_any = True
+                except Exception:
+                    pass
+            if hasattr(self, 'credit_amt') and credit_val is not None:
+                try:
+                    self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, f"{credit_val:.2f}")
+                    set_any = True
+                except Exception:
+                    pass
+            if set_any:
+                try:
+                    if hasattr(self, 'txn_prefill_status'):
+                        self.txn_prefill_status.configure(text="Amounts set from document")
+                    self._audit('document_amounts_set', {'file': filename, 'debit': (self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else None), 'credit': (self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else None)})
+                except Exception:
+                    pass
+            else:
+                self._audit('document_amounts_missing', {'file': filename})
+        except Exception:
+            self._audit('document_prefill_error', {'file': filename, 'stage': 'amounts_exception'})
             
     def _clear_transaction_form(self):
         """Reset all fields in the transaction form to their default values."""
@@ -1878,6 +2258,36 @@ class TechFixApp(tk.Tk):
                 self.txn_schedule_reverse.set(0)
             except Exception:
                 pass
+        try:
+            self._accounts_prefilled = False
+        except Exception:
+            pass
+        # Clear prefill status under Document
+        try:
+            if hasattr(self, 'txn_prefill_status'):
+                self.txn_prefill_status.configure(text='')
+        except Exception:
+            pass
+        # Clear document viewer state
+        try:
+            self.current_document_path = None
+            if hasattr(self, 'doc_search_var'):
+                self.doc_search_var.set('')
+            if hasattr(self, 'doc_annot_var'):
+                self.doc_annot_var.set('')
+            if hasattr(self, 'doc_viewer'):
+                self.doc_viewer.configure(state=tk.NORMAL)
+                self.doc_viewer.delete('1.0', tk.END)
+                self.doc_viewer.configure(state=tk.NORMAL)
+            if hasattr(self, 'doc_view_status'):
+                self.doc_view_status.configure(text='No document selected')
+            if hasattr(self, 'doc_recent_var'):
+                try:
+                    self.doc_recent_var.set('')
+                except Exception:
+                    pass
+        except Exception:
+            pass
             
         # Clear any journal entry lines if they exist
         if hasattr(self, 'journal_entries') and hasattr(self.journal_entries, 'delete'):
@@ -2077,26 +2487,30 @@ class TechFixApp(tk.Tk):
     def _build_transactions_tab(self) -> None:
         frame = self.tab_txn
         
-        # Create a main container with proper expansion
-        main_container = ttk.Frame(frame, style="Techfix.Surface.TFrame")
+        # Create a split pane container so both sides share space fairly
+        main_container = ttk.Panedwindow(frame, orient=tk.HORIZONTAL)
         main_container.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-        main_container.columnconfigure(0, weight=1)
-        main_container.columnconfigure(1, weight=1)
-        main_container.rowconfigure(0, weight=1)
+        left_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
+        right_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
+        try:
+            main_container.add(left_panel, weight=1)
+            main_container.add(right_panel, weight=1)
+        except Exception:
+            pass
         
         # Form frame with fixed height
-        form = ttk.LabelFrame(main_container, text="New Transaction", style="Techfix.TLabelframe")
-        form.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=0)
+        form = ttk.LabelFrame(left_panel, text="New Transaction", style="Techfix.TLabelframe")
+        form.pack(fill=tk.BOTH, expand=True, padx=(0, 6), pady=0)
 
         # Column weight strategy: labels (0,2,4) stay compact, inputs (1,3) expand
-        form.columnconfigure(0, weight=0)
-        form.columnconfigure(1, weight=3)
-        form.columnconfigure(2, weight=0)
-        form.columnconfigure(3, weight=4)
-        form.columnconfigure(4, weight=0)
+        form.columnconfigure(0, weight=0, minsize=120)
+        form.columnconfigure(1, weight=3, minsize=280)
+        form.columnconfigure(2, weight=0, minsize=120)
+        form.columnconfigure(3, weight=4, minsize=320)
+        form.columnconfigure(4, weight=0, minsize=120)
         
         # Configure form grid row weights
-        for i in range(8):  # 0-7 rows
+        for i in range(9):  # 0-8 rows
             form.rowconfigure(i, weight=0)
         form.rowconfigure(5, weight=1)  # Memo row gets extra space
         
@@ -2117,24 +2531,60 @@ class TechFixApp(tk.Tk):
         accounts = db.get_accounts()
         account_names = [f"{a['code']} - {a['name']}" for a in accounts]
         self.account_id_by_display = {f"{a['code']} - {a['name']}": a["id"] for a in accounts}
+        for a in accounts:
+            try:
+                self.account_id_by_display[str(a['code'])] = a['id']
+            except Exception:
+                pass
+            try:
+                self.account_id_by_display[str(a['name'])] = a['id']
+                self.account_id_by_display[str(a['name']).lower()] = a['id']
+            except Exception:
+                pass
 
         # Debit line with optimized spacing
         ttk.Label(form, text="Debit Account:").grid(row=1, column=0, sticky="w", padx=2, pady=1)
-        self.debit_acct = ttk.Combobox(form, values=account_names, style="Techfix.TCombobox")
+        self.debit_acct_var = tk.StringVar(value="")
+        self.debit_acct = ttk.Combobox(form, values=[''] + account_names, textvariable=self.debit_acct_var, style="Techfix.TCombobox")
         self.debit_acct.grid(row=1, column=1, sticky="we", padx=2, pady=1)
+        try:
+            self.debit_acct.set('')
+        except Exception:
+            pass
+        try:
+            self.debit_acct.bind('<<ComboboxSelected>>', lambda e: self._on_account_changed('debit'))
+        except Exception:
+            pass
         
         ttk.Label(form, text="Amount:").grid(row=1, column=2, sticky="e", padx=2, pady=1)
-        self.debit_amt = ttk.Entry(form, style="Techfix.TEntry", width=15)
-        self.debit_amt.grid(row=1, column=3, sticky="w", padx=2, pady=1)
+        self.debit_amt = ttk.Entry(form, style="Techfix.TEntry")
+        self.debit_amt.grid(row=1, column=3, sticky="we", padx=2, pady=1)
+        try:
+            self.debit_amt.bind('<KeyRelease>', lambda e: self._update_post_buttons_enabled())
+        except Exception:
+            pass
 
         # Credit line with optimized spacing
         ttk.Label(form, text="Credit Account:").grid(row=2, column=0, sticky="w", padx=2, pady=1)
-        self.credit_acct = ttk.Combobox(form, values=account_names, style="Techfix.TCombobox")
+        self.credit_acct_var = tk.StringVar(value="")
+        self.credit_acct = ttk.Combobox(form, values=[''] + account_names, textvariable=self.credit_acct_var, style="Techfix.TCombobox")
         self.credit_acct.grid(row=2, column=1, sticky="we", padx=2, pady=1)
+        try:
+            self.credit_acct.set('')
+        except Exception:
+            pass
+        try:
+            self.credit_acct.bind('<<ComboboxSelected>>', lambda e: self._on_account_changed('credit'))
+        except Exception:
+            pass
         
         ttk.Label(form, text="Amount:").grid(row=2, column=2, sticky="e", padx=2, pady=1)
-        self.credit_amt = ttk.Entry(form, style="Techfix.TEntry", width=15)
-        self.credit_amt.grid(row=2, column=3, sticky="w", padx=2, pady=1)
+        self.credit_amt = ttk.Entry(form, style="Techfix.TEntry")
+        self.credit_amt.grid(row=2, column=3, sticky="we", padx=2, pady=1)
+        try:
+            self.credit_amt.bind('<KeyRelease>', lambda e: self._update_post_buttons_enabled())
+        except Exception:
+            pass
 
         # Document references row with optimized spacing
         ttk.Label(form, text="Doc #:").grid(row=3, column=0, sticky="w", padx=2, pady=1)
@@ -2146,7 +2596,7 @@ class TechFixApp(tk.Tk):
         self.txn_external_ref.grid(row=3, column=3, sticky="we", padx=2, pady=1)
 
         # Source type and attachment row with optimized layout
-        ttk.Label(form, text="Source:").grid(row=4, column=0, sticky="w", padx=2, pady=1)
+        ttk.Label(form, text="Source:").grid(row=4, column=0, sticky="w", padx=2, pady=(6,1))
         self.txn_source_type = ttk.Combobox(
             form,
             values=["", "Invoice", "Receipt", "Bank", "Adjust", "Payroll", "Other"],
@@ -2158,7 +2608,7 @@ class TechFixApp(tk.Tk):
         self.txn_source_type.grid(row=4, column=1, sticky="we", padx=2, pady=1)
 
         # Attachment row with better button visibility
-        ttk.Label(form, text="Document:").grid(row=4, column=2, sticky="e", padx=2, pady=1)
+        ttk.Label(form, text="Document:").grid(row=4, column=2, sticky="e", padx=2, pady=(6,1))
         self.txn_attachment_path = tk.StringVar(value="")
         
         # Create a frame for the entry and button
@@ -2186,9 +2636,12 @@ class TechFixApp(tk.Tk):
             width=8
         )
         browse_btn.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        self.txn_prefill_status = ttk.Label(attach_frame, text="", style="Techfix.TLabel")
+        self.txn_prefill_status.grid(row=1, column=0, columnspan=2, sticky="w", padx=(0,4), pady=(4,0))
+
 
         # Compact memo field
-        ttk.Label(form, text="Memo:").grid(row=5, column=0, sticky="nw", padx=2, pady=2)
+        ttk.Label(form, text="Memo:").grid(row=5, column=0, sticky="nw", padx=2, pady=(6,2))
         
         # Create a frame to hold the text widget and scrollbar
         memo_frame = ttk.Frame(form, style="Techfix.TFrame")
@@ -2204,9 +2657,9 @@ class TechFixApp(tk.Tk):
             height=3,
             bg=self.palette["surface_bg"],
             fg=self.palette["text_primary"],
-            bd=1,
-            relief=tk.SOLID,
-            highlightthickness=1,
+            bd=0,
+            relief=tk.FLAT,
+            highlightthickness=0,
             highlightbackground=self.palette.get("entry_border", "#d8dee9"),
             highlightcolor=self.palette.get("accent_color", "#2563eb"),
             wrap=tk.WORD,
@@ -2246,22 +2699,65 @@ class TechFixApp(tk.Tk):
             variable=self.txn_is_adjust, 
             style="Techfix.TCheckbutton"
         ).pack(side=tk.LEFT, padx=(0, 12), pady=1)
-        
+
         self.txn_schedule_reverse = tk.IntVar(value=0)
         ttk.Checkbutton(
             options_container,
             text="Schedule Reversal",
             variable=self.txn_schedule_reverse,
             style="Techfix.TCheckbutton",
+            command=lambda: self._on_schedule_reverse_toggle()
         ).pack(side=tk.LEFT, padx=(0, 4), pady=1)
+
+        # Document Viewer Panel
+        viewer_wrap = ttk.Labelframe(form, text="Document Viewer", style="Techfix.TLabelframe")
+        viewer_wrap.grid(row=7, column=0, columnspan=5, sticky="nsew", padx=2, pady=4)
+        form.rowconfigure(7, weight=1)
+        viewer_wrap.columnconfigure(0, weight=1)
+        viewer_wrap.rowconfigure(1, weight=1)
+
+        toolbar = ttk.Frame(viewer_wrap, style="Techfix.Surface.TFrame")
+        toolbar.grid(row=0, column=0, sticky="we", padx=4, pady=2)
+        self.doc_view_status = ttk.Label(toolbar, text="No document selected", style="Techfix.TLabel")
+        self.doc_view_status.pack(side=tk.LEFT)
+        ttk.Button(toolbar, text="Open", command=lambda: self._open_document_external(), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
+        ttk.Button(toolbar, text="Zoom +", command=lambda: self._document_zoom(1), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
+        ttk.Button(toolbar, text="Zoom -", command=lambda: self._document_zoom(-1), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
+        ttk.Button(toolbar, text="Reset", command=lambda: self._document_zoom(0), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
+        self.doc_search_var = tk.StringVar(value="")
+        ttk.Entry(toolbar, textvariable=self.doc_search_var, width=18, style="Techfix.TEntry").pack(side=tk.RIGHT, padx=4)
+        ttk.Button(toolbar, text="Find", command=lambda: self._document_search(), style="Techfix.TButton").pack(side=tk.RIGHT, padx=2)
+
+        # (Removed Library controls for simple viewer layout)
+
+        # Viewer area
+        import tkinter.scrolledtext as st
+        self.doc_view_font_size = 11
+        self.doc_viewer = st.ScrolledText(viewer_wrap, bg=self.palette["surface_bg"], fg=self.palette["text_primary"], wrap=tk.WORD, font=("Segoe UI", self.doc_view_font_size))
+        self.doc_viewer.grid(row=1, column=0, sticky="nsew", padx=4, pady=2)
+        self.doc_viewer.tag_configure('search_hit', background=self.palette.get('tab_selected_bg', '#e0ecff'))
+        # (Removed thumbnails pane for simpler layout)
+
+        # Annotation tools
+        annot_bar = ttk.Frame(viewer_wrap, style="Techfix.Surface.TFrame")
+        annot_bar.grid(row=2, column=0, sticky="we", padx=4, pady=(0,4))
+        self.doc_annot_var = tk.StringVar(value="")
+        ttk.Entry(annot_bar, textvariable=self.doc_annot_var, width=40, style="Techfix.TEntry").pack(side=tk.LEFT, padx=4)
+        ttk.Button(annot_bar, text="Save Note", command=lambda: self._document_add_annotation(), style="Techfix.TButton").pack(side=tk.LEFT)
+        # (Removed bookmarks UI to restore simpler viewer)
         
         ttk.Label(options_container, text="Date:").pack(side=tk.LEFT, padx=(0, 2), pady=1)
         self.txn_reverse_date = ttk.Entry(options_container, width=12, style="Techfix.TEntry")
         self.txn_reverse_date.pack(side=tk.LEFT, pady=1)
+        try:
+            # Disabled until Schedule Reversal is checked
+            self.txn_reverse_date.configure(state='disabled')
+        except Exception:
+            pass
 
         # Action buttons - compact and aligned
         action_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        action_frame.grid(row=7, column=0, columnspan=5, sticky="e", padx=2, pady=(4, 0))
+        action_frame.grid(row=8, column=0, columnspan=5, sticky="e", padx=2, pady=(4, 0))
         
         # Configure action frame columns
         action_frame.columnconfigure(0, weight=1)
@@ -2277,30 +2773,22 @@ class TechFixApp(tk.Tk):
             'padding': (10, 4)  # More padding for better clickability
         }
         
-        ttk.Button(
-            btn_container,
-            text="Clear Form",
-            command=self._clear_transaction_form,
-            **button_style
-        ).pack(side=tk.RIGHT, padx=(8, 0), pady=2)
+        self.btn_clear = ttk.Button(btn_container, text="Clear Form", command=self._clear_transaction_form, **button_style)
+        self.btn_clear.pack(side=tk.RIGHT, padx=(8, 0), pady=2)
         
-        ttk.Button(
-            btn_container,
-            text="Save Draft",
-            command=lambda: self._record_transaction("draft"),
-            **button_style
-        ).pack(side=tk.RIGHT, padx=6, pady=2)
+        self.btn_draft = ttk.Button(btn_container, text="Save Draft", command=lambda: self._record_transaction("draft"), **button_style)
+        self.btn_draft.pack(side=tk.RIGHT, padx=6, pady=2)
         
-        ttk.Button(
-            btn_container,
-            text="Record & Post",
-            command=lambda: self._record_transaction("posted"),
-            **button_style
-        ).pack(side=tk.RIGHT, pady=2)
+        self.btn_post = ttk.Button(btn_container, text="Record & Post", command=lambda: self._record_transaction("posted"), **button_style)
+        self.btn_post.pack(side=tk.RIGHT, pady=2)
+        try:
+            self._update_post_buttons_enabled()
+        except Exception:
+            pass
 
         # --- Recent Transactions area (right pane) ---
-        recent_wrap = ttk.Labelframe(main_container, text="Recent Transactions", style="Techfix.TLabelframe")
-        recent_wrap.grid(row=0, column=1, sticky="nsew")
+        recent_wrap = ttk.Labelframe(right_panel, text="Recent Transactions", style="Techfix.TLabelframe")
+        recent_wrap.pack(fill=tk.BOTH, expand=True, padx=(6, 0), pady=0)
         recent_wrap.columnconfigure(0, weight=1)
         recent_wrap.rowconfigure(1, weight=1)
         controls = ttk.Frame(recent_wrap, style="Techfix.Surface.TFrame")
@@ -3241,6 +3729,777 @@ class TechFixApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load ledger entries: {str(e)}")
 
+    def _resolve_account_id(self, sel: str) -> Optional[int]:
+        try:
+            s = (sel or '').strip()
+            if not s:
+                return None
+            v = self.account_id_by_display.get(s) or self.account_id_by_display.get(s.lower())
+            if v:
+                return int(v)
+            if ' - ' in s:
+                left = s.split(' - ', 1)[0].strip()
+                v = self.account_id_by_display.get(left)
+                if v:
+                    return int(v)
+            accs = db.get_accounts(conn=self.engine.conn)
+            for a in accs:
+                if str(a['code']) == s or str(a['name']).lower() == s.lower() or f"{a['code']} - {a['name']}" == s:
+                    return int(a['id'])
+            return None
+        except Exception:
+            return None
+
+    def _infer_accounts_from_context(self, desc: str, source: Optional[str]) -> tuple[str | None, str | None]:
+        try:
+            d = (desc or '').strip().lower()
+            s = (source or '').strip().lower()
+            pairs: list[tuple[str, tuple[str, str]]] = [
+                ('rent', ('501 - Rent Expense', '101 - Cash')),
+                ('utilities', ('505 - Utilities Expense', '101 - Cash')),
+                ('supplies adjustment', ('503 - Supplies Expense', '124 - Supplies')),
+                ('adjust', ('503 - Supplies Expense', '124 - Supplies')),
+                ('payroll', ('502 - Salaries Expense', '101 - Cash')),
+                ('withdrawal', ("302 - Owner's Drawings", '101 - Cash')),
+                ('owner', ("302 - Owner's Drawings", '101 - Cash')),
+                ('deposit', ('101 - Cash', '401 - Service Revenue')),
+                ('invoice', ('106 - Accounts Receivable', '401 - Service Revenue')),
+                ('sales', ('101 - Cash', '402 - Sales Revenue')),
+            ]
+            match = None
+            for k, v in pairs:
+                if k in d or k == s:
+                    match = v
+                    break
+            if not match:
+                return (None, None)
+            accs = db.get_accounts(conn=self.engine.conn)
+            displays = {f"{a['code']} - {a['name']}" for a in accs}
+            da = match[0] if match[0] in displays else None
+            ca = match[1] if match[1] in displays else None
+            return (da, ca)
+        except Exception:
+            return (None, None)
+
+    def _match_account_display(self, text: Optional[str]) -> Optional[str]:
+        try:
+            if not text:
+                return None
+            accs = db.get_accounts()
+            for a in accs:
+                disp = f"{a['code']} - {a['name']}"
+                if str(text) == disp or str(text) == a['code'] or str(text).lower() == a['name'].lower():
+                    return disp
+            return None
+        except Exception:
+            return None
+
+    def _set_accounts(self, debit_disp: Optional[str], credit_disp: Optional[str]) -> None:
+        try:
+            if debit_disp and hasattr(self, 'debit_acct'):
+                self.debit_acct.set(debit_disp)
+                self._accounts_prefilled = True
+            if credit_disp and hasattr(self, 'credit_acct'):
+                self.credit_acct.set(credit_disp)
+                self._accounts_prefilled = True
+            # Do not show account set status in the UI
+        except Exception:
+            pass
+
+    def _assign_accounts_from_data(self, data_obj: dict) -> bool:
+        try:
+            da_raw = data_obj.get('debit_account')
+            ca_raw = data_obj.get('credit_account')
+            dd = self._match_account_display(da_raw)
+            cc = self._match_account_display(ca_raw)
+            if dd or cc:
+                self._set_accounts(dd, cc)
+                return True
+            return False
+        except Exception:
+            return False
+
+    def _validate_accounts_assigned(self) -> bool:
+        try:
+            da = self.debit_acct.get().strip() if hasattr(self, 'debit_acct') else ''
+            ca = self.credit_acct.get().strip() if hasattr(self, 'credit_acct') else ''
+            ok = bool(da) and bool(ca)
+            # Do not show account not set status in the UI
+            return ok
+        except Exception:
+            return False
+
+    def _on_account_changed(self, which: str) -> None:
+        try:
+            self._accounts_modified_manually = True
+            # Do not show account set status in the UI
+        except Exception:
+            pass
+
+    def _audit(self, action: str, details: dict) -> None:
+        try:
+            db.log_audit(action=action, details=json.dumps(details), user='system', conn=self.engine.conn)
+        except Exception:
+            pass
+
+    def _validate_amounts_present(self) -> bool:
+        try:
+            d = self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else ''
+            c = self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else ''
+            ok = bool(d) and bool(c)
+            return ok
+        except Exception:
+            return False
+
+    def _validate_transaction_ready(self) -> tuple[bool, list[str]]:
+        issues: list[str] = []
+        try:
+            dd = self.debit_acct.get().strip() if hasattr(self, 'debit_acct') else ''
+            cc = self.credit_acct.get().strip() if hasattr(self, 'credit_acct') else ''
+            if not dd:
+                issues.append('Missing debit account')
+            if not cc:
+                issues.append('Missing credit account')
+            d = self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else ''
+            c = self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else ''
+            if not d:
+                issues.append('Missing debit amount')
+            if not c:
+                issues.append('Missing credit amount')
+            ok = len(issues) == 0
+            return ok, issues
+        except Exception:
+            return False, ['Validation error']
+
+    def _auto_entry_from_data(self, data: dict, filename: str) -> dict:
+        try:
+            import os
+            sugg: dict = {}
+            date = data.get('date')
+            desc = data.get('description')
+            docno = data.get('document_ref') or data.get('doc_no') or None
+            st = data.get('source_type') or None
+            if not st:
+                base = os.path.basename(filename)
+                name, _ = os.path.splitext(base)
+                parts = name.split('_')
+                st = parts[1].title() if len(parts) > 1 else None
+            cat = (data.get('category') or data.get('expense_type') or data.get('purpose') or '').strip().lower()
+            dv_raw = data.get('debit_amount') or data.get('debit') or data.get('amount') or None
+            cv_raw = data.get('credit_amount') or data.get('credit') or data.get('amount') or None
+            def fmt_amt(v):
+                try:
+                    import re
+                    s = str(v).strip()
+                    neg = False
+                    if s.startswith('(') and s.endswith(')'):
+                        neg = True
+                        s = s[1:-1]
+                    s = re.sub(r"[^0-9.\-]", "", s)
+                    if not s:
+                        return None
+                    val = float(s)
+                    if neg:
+                        val = -abs(val)
+                    return round(val, 2)
+                except Exception:
+                    return None
+            dv = fmt_amt(dv_raw)
+            cv = fmt_amt(cv_raw)
+            if dv is None and cv is not None:
+                dv = cv
+            if cv is None and dv is not None:
+                cv = dv
+            da_disp = None
+            ca_disp = None
+            if st:
+                da_src, ca_src = self._default_accounts_for_source(st)
+                da_disp = da_src or da_disp
+                ca_disp = ca_src or ca_disp
+            if not da_disp or not ca_disp:
+                k = (cat or (desc or '')).lower()
+                da_ctx, ca_ctx = self._infer_accounts_from_context(k, st)
+                da_disp = da_disp or da_ctx
+                ca_disp = ca_disp or ca_ctx
+            if not desc:
+                parts = []
+                if st:
+                    parts.append(str(st))
+                if docno:
+                    parts.append(str(docno))
+                meta = data.get('purpose') or data.get('vendor') or data.get('payee') or ''
+                if meta:
+                    parts.append(str(meta))
+                desc = ' '.join([p for p in parts if p]).strip() or 'Transaction'
+            sugg['date'] = date
+            sugg['description'] = desc
+            sugg['debit_account_display'] = da_disp
+            sugg['credit_account_display'] = ca_disp
+            sugg['debit_amount'] = dv
+            sugg['credit_amount'] = cv
+            sugg['document_ref'] = docno
+            sugg['source_type'] = st
+            return sugg
+        except Exception:
+            return {}
+
+    def _update_post_buttons_enabled(self) -> None:
+        try:
+            dd = self.debit_acct.get().strip() if hasattr(self, 'debit_acct') else ''
+            cc = self.credit_acct.get().strip() if hasattr(self, 'credit_acct') else ''
+            d = self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else ''
+            c = self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else ''
+            enabled = bool(dd) and bool(cc) and bool(d) and bool(c)
+            state = 'normal' if enabled else 'disabled'
+            if hasattr(self, 'btn_post'):
+                try:
+                    self.btn_post.configure(state=state)
+                except Exception:
+                    pass
+            if hasattr(self, 'btn_draft'):
+                try:
+                    self.btn_draft.configure(state='normal')
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _load_document_preview(self, filename: str) -> None:
+        try:
+            import os
+            self.current_document_path = filename
+            self.doc_view_status.configure(text="Loading…")
+            if not os.path.exists(filename):
+                self.doc_view_status.configure(text="File not found")
+                messagebox.showerror("Document", "Selected document does not exist")
+                self._audit('document_missing', {'file': filename})
+                return
+            if not os.access(filename, os.R_OK):
+                self.doc_view_status.configure(text="No permission to read")
+                messagebox.showerror("Document", "You do not have permission to read this document")
+                self._audit('document_permission_denied', {'file': filename})
+                return
+            ext = os.path.splitext(filename)[1].lower()
+            content = None
+            ok = False
+            if not hasattr(self, '_doc_cache'):
+                self._doc_cache = {}
+            cache_hit = False
+            if filename in self._doc_cache:
+                content = self._doc_cache.get(filename)
+                cache_hit = content is not None
+                ok = cache_hit
+            if ext in ('.txt', '.csv', '.json'):
+                try:
+                    if not cache_hit:
+                        with open(filename, 'r', encoding='utf-8', errors='replace') as f:
+                            # Lazy load first 256KB
+                            content = f.read(256 * 1024)
+                        self._doc_cache[filename] = content
+                    ok = True
+                except Exception:
+                    ok = False
+            elif ext == '.pdf':
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(filename)
+                    self.page_slider.configure(to=max(1, doc.page_count))
+                    page = doc.load_page(0)
+                    text = page.get_text() or "(PDF text not available)"
+                    content = text
+                    try:
+                        self._build_pdf_thumbnails(doc)
+                    except Exception:
+                        pass
+                    ok = True
+                except Exception:
+                    ok = False
+            elif ext in ('.docx', '.doc'):
+                try:
+                    import docx
+                    d = docx.Document(filename)
+                    content = "\n".join(p.text for p in d.paragraphs[:500])
+                    ok = True
+                except Exception:
+                    ok = False
+            else:
+                ok = False
+            if ok and content:
+                try:
+                    self.doc_viewer.configure(state=tk.NORMAL)
+                    self.doc_viewer.delete('1.0', tk.END)
+                    self.doc_viewer.insert('1.0', content)
+                    self.doc_viewer.configure(state=tk.NORMAL)
+                    self.doc_view_status.configure(text=os.path.basename(filename))
+                    self._audit('document_view_opened', {'file': filename, 'ext': ext, 'length': len(content)})
+                except Exception:
+                    ok = False
+            if not ok:
+                self.doc_view_status.configure(text="Preview not available. Use Open")
+                self._audit('document_preview_unavailable', {'file': filename})
+        except Exception:
+            try:
+                self.doc_view_status.configure(text="Failed to load document")
+            except Exception:
+                pass
+            self._audit('document_preview_error', {'file': filename, 'stage': 'exception'})
+
+    def _set_view_mode(self, mode: str) -> None:
+        try:
+            # Mode is advisory; for text we keep continuous, for PDF we set slider range
+            self._audit('viewer_mode', {'mode': mode})
+        except Exception:
+            pass
+
+    def _goto_page(self, page: int) -> None:
+        try:
+            import fitz
+            path = getattr(self, 'current_document_path', None)
+            if not path or not path.lower().endswith('.pdf'):
+                return
+            doc = fitz.open(path)
+            p = doc.load_page(max(0, min(doc.page_count - 1, page - 1)))
+            text = p.get_text() or f"(Page {page})"
+            self.doc_viewer.configure(state=tk.NORMAL)
+            self.doc_viewer.delete('1.0', tk.END)
+            self.doc_viewer.insert('1.0', text)
+            self.doc_viewer.configure(state=tk.NORMAL)
+        except Exception:
+            pass
+
+    def _build_pdf_thumbnails(self, doc) -> None:
+        try:
+            if hasattr(self, 'doc_thumbs'):
+                for it in self.doc_thumbs.get_children():
+                    self.doc_thumbs.delete(it)
+                for i in range(min(100, doc.page_count)):
+                    self.doc_thumbs.insert('', 'end', values=(f"Page {i+1}"), tags=(str(i+1),))
+        except Exception:
+            pass
+
+    def _on_thumb_select(self) -> None:
+        try:
+            sel = self.doc_thumbs.selection()
+            if not sel:
+                return
+            iid = sel[0]
+            tags = self.doc_thumbs.item(iid, 'tags')
+            if tags:
+                p = int(tags[0])
+                self.page_var.set(p)
+                self._goto_page(p)
+        except Exception:
+            pass
+
+    def _bookmark_add(self) -> None:
+        try:
+            path = getattr(self, 'current_document_path', '')
+            mark = f"{os.path.basename(path)} @ {self.page_var.get()}"
+            self.bookmarks.insert('', 'end', values=(mark,))
+            self._audit('viewer_bookmark_add', {'file': path, 'mark': mark})
+        except Exception:
+            pass
+
+    def _bookmark_remove(self) -> None:
+        try:
+            for it in self.bookmarks.selection():
+                self.bookmarks.delete(it)
+        except Exception:
+            pass
+
+    def _share_document(self) -> None:
+        try:
+            path = getattr(self, 'current_document_path', '')
+            if path:
+                self.clipboard_clear()
+                self.clipboard_append(path)
+                messagebox.showinfo('Share', 'Document path copied to clipboard')
+        except Exception:
+            pass
+
+    def _print_document(self) -> None:
+        try:
+            import os
+            path = getattr(self, 'current_document_path', '')
+            if path and os.path.exists(path):
+                try:
+                    os.startfile(path, 'print')
+                except Exception:
+                    messagebox.showwarning('Print', 'Printing not available for this file')
+        except Exception:
+            pass
+
+    def _open_document_external(self) -> None:
+        try:
+            import os
+            path = getattr(self, 'current_document_path', None) or (self.txn_attachment_path.get().strip() if hasattr(self, 'txn_attachment_path') else None)
+            if path and os.path.exists(path):
+                os.startfile(path)
+                self._audit('document_open_external', {'file': path})
+            else:
+                messagebox.showwarning('Document', 'No document selected')
+        except Exception:
+            pass
+
+    def _on_schedule_reverse_toggle(self) -> None:
+        try:
+            schedule = bool(self.txn_schedule_reverse.get()) if hasattr(self, 'txn_schedule_reverse') else False
+            if schedule:
+                self.txn_reverse_date.configure(state='normal')
+                try:
+                    if hasattr(self, 'txn_date'):
+                        d = self.txn_date.get().strip()
+                        from datetime import datetime, timedelta
+                        dt = datetime.strptime(d, '%Y-%m-%d') if d else datetime.now()
+                        self.txn_reverse_date.delete(0, tk.END)
+                        self.txn_reverse_date.insert(0, (dt + timedelta(days=30)).strftime('%Y-%m-%d'))
+                except Exception:
+                    pass
+            else:
+                self.txn_reverse_date.delete(0, tk.END)
+                self.txn_reverse_date.configure(state='disabled')
+        except Exception:
+            pass
+
+    # Source document picker enhancements
+    def _init_document_picker(self) -> None:
+        try:
+            import os, json
+            # Default library folder
+            default_dir = os.path.join(str(db.DB_DIR), 'SampleSourceDocs')
+            if os.path.exists(default_dir):
+                self.doc_library_dir = default_dir
+            else:
+                try:
+                    from pathlib import Path
+                    self.doc_library_dir = str(Path.home())
+                except Exception:
+                    self.doc_library_dir = None
+            self._recent_docs = []
+            # Load recent list
+            fp = os.path.join(str(db.DB_DIR), 'recent_docs.json')
+            if os.path.exists(fp):
+                with open(fp, 'r', encoding='utf-8') as f:
+                    self._recent_docs = json.load(f) or []
+            if hasattr(self, 'doc_recent_cb'):
+                self.doc_recent_cb.configure(values=self._recent_docs)
+        except Exception:
+            pass
+
+    def _save_recent_docs(self) -> None:
+        try:
+            import json, os
+            fp = os.path.join(str(db.DB_DIR), 'recent_docs.json')
+            with open(fp, 'w', encoding='utf-8') as f:
+                json.dump(self._recent_docs[:20], f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _append_recent_document(self, path: str) -> None:
+        try:
+            if not hasattr(self, '_recent_docs'):
+                self._recent_docs = []
+            # Move to front if exists
+            self._recent_docs = [p for p in self._recent_docs if p != path]
+            self._recent_docs.insert(0, path)
+            self._recent_docs = self._recent_docs[:20]
+            self._save_recent_docs()
+        except Exception:
+            pass
+
+    def _pick_recent_document(self) -> None:
+        try:
+            path = self.doc_recent_var.get().strip() if hasattr(self, 'doc_recent_var') else ''
+            if not path:
+                return
+            self.txn_attachment_path.set(path)
+            try:
+                self._prefill_date_from_source_document(path)
+                self._prefill_amounts_from_source_document(path)
+                self._prefill_from_source_document(path)
+            except Exception:
+                pass
+            try:
+                self._load_document_preview(path)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _open_picker_folder(self) -> None:
+        try:
+            import os
+            d = getattr(self, 'doc_library_dir', None)
+            if d and os.path.exists(d):
+                os.startfile(d)
+        except Exception:
+            pass
+
+    def _clear_document_selection(self) -> None:
+        try:
+            if hasattr(self, 'txn_attachment_path'):
+                self.txn_attachment_path.set('')
+            if hasattr(self, 'doc_recent_var'):
+                self.doc_recent_var.set('')
+            if hasattr(self, 'txn_prefill_status'):
+                self.txn_prefill_status.configure(text='')
+            self.current_document_path = None
+            if hasattr(self, 'doc_viewer'):
+                self.doc_viewer.configure(state=tk.NORMAL)
+                self.doc_viewer.delete('1.0', tk.END)
+                self.doc_viewer.configure(state=tk.NORMAL)
+            if hasattr(self, 'doc_view_status'):
+                self.doc_view_status.configure(text='No document selected')
+        except Exception:
+            pass
+
+    # Document Library helpers
+    def _init_document_library(self) -> None:
+        try:
+            import os
+            default_dir = os.path.join(str(db.DB_DIR), 'SampleSourceDocs')
+            self.doc_library_dir = default_dir
+            self._refresh_document_library(force=True)
+        except Exception:
+            pass
+
+    def _choose_document_library_folder(self) -> None:
+        try:
+            from tkinter import filedialog
+            d = filedialog.askdirectory(initialdir=self.doc_library_dir if hasattr(self, 'doc_library_dir') else None)
+            if d:
+                self.doc_library_dir = d
+                self._refresh_document_library(force=True)
+        except Exception:
+            pass
+
+    def _get_doc_metadata(self, file_path: str) -> dict:
+        import os, json
+        base = os.path.basename(file_path)
+        name, ext = os.path.splitext(base)
+        parts = name.split('_')
+        date = parts[0] if (parts and len(parts[0]) == 10) else ''
+        typ = parts[1].title() if len(parts) > 1 else ext.lstrip('.').upper()
+        status = 'Unverified'
+        sidecar = os.path.splitext(file_path)[0] + '.json'
+        try:
+            if os.path.exists(sidecar):
+                with open(sidecar, 'r', encoding='utf-8') as f:
+                    d = json.load(f)
+                required = ['debit_account','credit_account','debit_amount','credit_amount']
+                ok = all(k in d.keys() for k in required)
+                status = 'Verified' if ok else 'Incomplete'
+        except Exception:
+            status = 'Error'
+        return {'name': base, 'date': date, 'type': typ, 'status': status}
+
+    def _refresh_document_library(self, force: bool = False) -> None:
+        try:
+            import os
+            flt = (self.doc_library_filter.get().strip().lower() if hasattr(self, 'doc_library_filter') else '')
+            if hasattr(self, 'doc_library_tree'):
+                for it in self.doc_library_tree.get_children():
+                    self.doc_library_tree.delete(it)
+            directory = getattr(self, 'doc_library_dir', None)
+            if not directory or not os.path.exists(directory):
+                return
+            files = []
+            try:
+                for fn in os.listdir(directory):
+                    if fn.lower().endswith(('.pdf','.jpg','.jpeg','.png','.doc','.docx','.xls','.xlsx','.json','.csv')):
+                        files.append(os.path.join(directory, fn))
+            except Exception:
+                files = []
+            # Basic pagination/truncation for performance
+            files = sorted(files)[:500]
+            for fp in files:
+                meta = self._get_doc_metadata(fp)
+                if flt and (flt not in meta['name'].lower() and flt not in meta['type'].lower() and flt not in meta['date'].lower() and flt not in meta['status'].lower()):
+                    continue
+                self.doc_library_tree.insert('', 'end', values=(meta['name'], meta['date'], meta['type'], meta['status']), tags=(fp,))
+        except Exception:
+            pass
+
+    def _on_doc_library_select(self) -> None:
+        try:
+            sel = self.doc_library_tree.selection()
+            if not sel:
+                return
+            # Use first selected to preview
+            iid = sel[0]
+            # Retrieve path from tags
+            tags = self.doc_library_tree.item(iid, 'tags')
+            if tags:
+                path = tags[0]
+                self._load_document_preview(path)
+        except Exception:
+            pass
+
+    def _doc_library_selected_paths(self) -> list:
+        try:
+            paths = []
+            for iid in self.doc_library_tree.selection():
+                tags = self.doc_library_tree.item(iid, 'tags')
+                if tags:
+                    paths.append(tags[0])
+            return paths
+        except Exception:
+            return []
+
+    def _doc_library_open_external(self) -> None:
+        try:
+            import os
+            paths = self._doc_library_selected_paths()
+            for p in paths:
+                if os.path.exists(p):
+                    os.startfile(p)
+        except Exception:
+            pass
+
+    def _doc_library_bulk_download(self) -> None:
+        try:
+            from tkinter import filedialog
+            import os, shutil
+            paths = self._doc_library_selected_paths()
+            if not paths:
+                messagebox.showwarning('Documents', 'Select document(s) first')
+                return
+            dest = filedialog.askdirectory()
+            if not dest:
+                return
+            for p in paths:
+                try:
+                    shutil.copy2(p, dest)
+                except Exception:
+                    pass
+            messagebox.showinfo('Documents', 'Downloaded selected documents')
+        except Exception:
+            pass
+
+    def _doc_library_bulk_archive(self) -> None:
+        try:
+            import os, shutil
+            paths = self._doc_library_selected_paths()
+            if not paths:
+                messagebox.showwarning('Documents', 'Select document(s) first')
+                return
+            arc_dir = os.path.join(str(db.DB_DIR), 'archive')
+            os.makedirs(arc_dir, exist_ok=True)
+            for p in paths:
+                try:
+                    shutil.move(p, os.path.join(arc_dir, os.path.basename(p)))
+                except Exception:
+                    pass
+            self._refresh_document_library(force=True)
+            messagebox.showinfo('Documents', 'Archived selected documents')
+        except Exception:
+            pass
+
+    def _document_zoom(self, delta: int) -> None:
+        try:
+            if delta == 0:
+                self.doc_view_font_size = 11
+            else:
+                self.doc_view_font_size = max(8, min(24, self.doc_view_font_size + delta))
+            self.doc_viewer.configure(font=("Segoe UI", self.doc_view_font_size))
+        except Exception:
+            pass
+
+    def _document_search(self) -> None:
+        try:
+            q = self.doc_search_var.get().strip()
+            self.doc_viewer.tag_remove('search_hit', '1.0', tk.END)
+            if not q:
+                return
+            idx = '1.0'
+            while True:
+                idx = self.doc_viewer.search(q, idx, nocase=True, stopindex=tk.END)
+                if not idx:
+                    break
+                lastidx = f"{idx}+{len(q)}c"
+                self.doc_viewer.tag_add('search_hit', idx, lastidx)
+                idx = lastidx
+        except Exception:
+            pass
+
+    def _document_add_annotation(self) -> None:
+        try:
+            note = self.doc_annot_var.get().strip()
+            path = getattr(self, 'current_document_path', '')
+            if note:
+                self._audit('document_annotation', {'file': path, 'note': note})
+                self.doc_annot_var.set('')
+                messagebox.showinfo('Annotation', 'Note saved to audit log')
+        except Exception:
+            pass
+
+    def _capture_ui_snapshot(self, *, label: str = "snapshot") -> None:
+        try:
+            snap = {}
+            for name in ('txn_date','txn_desc','debit_acct','credit_acct','debit_amt','credit_amt','txn_doc_ref','txn_external_ref','txn_source_type'):
+                w = getattr(self, name, None)
+                if w is None:
+                    continue
+                try:
+                    snap[name] = {
+                        'w': w.winfo_width(),
+                        'h': w.winfo_height(),
+                        'x': w.winfo_rootx(),
+                        'y': w.winfo_rooty(),
+                    }
+                except Exception:
+                    pass
+            self._audit('ui_snapshot', {'label': label, 'widgets': snap})
+        except Exception:
+            pass
+
+    def _default_accounts_for_source(self, source: str) -> tuple[str | None, str | None]:
+        try:
+            s = (source or '').strip().lower()
+            pairs = self._rules_map.get('source_pairs') or {
+                'invoice': ('106 - Accounts Receivable', '401 - Service Revenue'),
+                'receipt': ('101 - Cash', '401 - Service Revenue'),
+                'sales': ('101 - Cash', '402 - Sales Revenue'),
+                'bank': ('101 - Cash', '402 - Sales Revenue'),
+                'payroll': ('502 - Salaries Expense', '101 - Cash'),
+            }
+            if s in pairs:
+                da_disp, ca_disp = pairs[s]
+                try:
+                    accs = db.get_accounts(conn=self.engine.conn)
+                    displays = {f"{a['code']} - {a['name']}" for a in accs}
+                    da = da_disp if da_disp in displays else None
+                    ca = ca_disp if ca_disp in displays else None
+                    return (da, ca)
+                except Exception:
+                    return (da_disp, ca_disp)
+            return (None, None)
+        except Exception:
+            return (None, None)
+
+    def _default_fallback_accounts(self) -> tuple[str | None, str | None]:
+        try:
+            accs = db.get_accounts(conn=self.engine.conn)
+            cash = next((a for a in accs if a['code'] == '101' or a['name'].lower() == 'cash'), None)
+            srv = next((a for a in accs if a['code'] == '401' or a['name'].lower() == 'service revenue'), None)
+            asset = next((a for a in accs if str(a['type']).lower() == 'asset'), None)
+            revenue = next((a for a in accs if str(a['type']).lower() == 'revenue'), None)
+            da = f"{asset['code']} - {asset['name']}" if asset else (f"{cash['code']} - {cash['name']}" if cash else None)
+            ca = f"{revenue['code']} - {revenue['name']}" if revenue else (f"{srv['code']} - {srv['name']}" if srv else None)
+            return (da, ca)
+        except Exception:
+            return (None, None)
+
+    def _load_inference_rules(self) -> None:
+        try:
+            import json, os
+            rules_path = os.path.join(str(db.DB_DIR), 'rules.json')
+            if os.path.exists(rules_path):
+                with open(rules_path, 'r', encoding='utf-8') as f:
+                    self._rules_map = json.load(f) or {}
+        except Exception:
+            pass
+
     def _record_transaction(self, status: str) -> None:
         try:
             date = self.txn_date.get().strip() if hasattr(self, 'txn_date') else ''
@@ -3257,6 +4516,26 @@ class TechFixApp(tk.Tk):
             is_adjust = bool(self.txn_is_adjust.get()) if hasattr(self, 'txn_is_adjust') else False
             schedule = bool(self.txn_schedule_reverse.get()) if hasattr(self, 'txn_schedule_reverse') else False
             reverse_on = self.txn_reverse_date.get().strip() if schedule and hasattr(self, 'txn_reverse_date') else None
+            def _parse_amt(txt: str) -> float | None:
+                try:
+                    import re
+                    if txt is None:
+                        return None
+                    s = str(txt).strip()
+                    neg = False
+                    if s.startswith('(') and s.endswith(')'):
+                        neg = True
+                        s = s[1:-1]
+                    s = re.sub(r"[^0-9.\-]", "", s)
+                    if not s:
+                        return None
+                    val = float(s)
+                    if neg:
+                        val = -abs(val)
+                    return val
+                except Exception:
+                    return None
+
             if status == 'draft':
                 if not date:
                     date = datetime.now().strftime('%Y-%m-%d')
@@ -3265,11 +4544,13 @@ class TechFixApp(tk.Tk):
                 lines: list[JournalLine] = []
                 try:
                     if debit_acct and credit_acct and debit_amt_txt and credit_amt_txt:
-                        debit_amt = float(debit_amt_txt)
-                        credit_amt = float(credit_amt_txt)
+                        debit_amt = _parse_amt(debit_amt_txt)
+                        credit_amt = _parse_amt(credit_amt_txt)
+                        if debit_amt is None or credit_amt is None:
+                            raise ValueError('Amounts must be numeric')
                         if round(debit_amt - credit_amt, 2) == 0:
-                            did = self.account_id_by_display.get(debit_acct)
-                            cid = self.account_id_by_display.get(credit_acct)
+                            did = self._resolve_account_id(debit_acct)
+                            cid = self._resolve_account_id(credit_acct)
                             if did and cid:
                                 lines = [JournalLine(account_id=did, debit=debit_amt), JournalLine(account_id=cid, credit=credit_amt)]
                 except Exception:
@@ -3299,19 +4580,56 @@ class TechFixApp(tk.Tk):
                 except Exception:
                     pass
                 return
-            if not date or not desc:
-                messagebox.showerror('Error', 'Date and description are required')
-                return
+            if not date:
+                date = datetime.now().strftime('%Y-%m-%d')
+            if not desc:
+                desc = 'Transaction'
+            if (not debit_acct and not credit_acct) and not getattr(self, '_accounts_prefilled', False):
+                try:
+                    da, ca = self._infer_accounts_from_context(desc, source_type)
+                except Exception:
+                    da, ca = (None, None)
+                if (not debit_acct) and da:
+                    try:
+                        self.debit_acct.set(da)
+                    except Exception:
+                        pass
+                    debit_acct = da
+                if (not credit_acct) and ca:
+                    try:
+                        self.credit_acct.set(ca)
+                    except Exception:
+                        pass
+                    credit_acct = ca
             if not debit_acct or not credit_acct:
                 messagebox.showerror('Error', 'Select both debit and credit accounts')
                 return
-            debit_amt = float(debit_amt_txt)
-            credit_amt = float(credit_amt_txt)
+            # If only one amount provided, mirror to the other to form a balanced entry
+            if debit_amt_txt and not credit_amt_txt:
+                credit_amt_txt = debit_amt_txt
+                try:
+                    self.credit_amt.delete(0, tk.END); self.credit_amt.insert(0, credit_amt_txt)
+                except Exception:
+                    pass
+            elif credit_amt_txt and not debit_amt_txt:
+                debit_amt_txt = credit_amt_txt
+                try:
+                    self.debit_amt.delete(0, tk.END); self.debit_amt.insert(0, debit_amt_txt)
+                except Exception:
+                    pass
+            if not debit_acct or not credit_acct:
+                messagebox.showerror('Error', 'Select both debit and credit accounts')
+                return
+            debit_amt = _parse_amt(debit_amt_txt)
+            credit_amt = _parse_amt(credit_amt_txt)
+            if debit_amt is None or credit_amt is None:
+                messagebox.showerror('Error', 'Amounts must be numeric (e.g., 1500 or 1,500.00)')
+                return
             if round(debit_amt - credit_amt, 2) != 0:
                 messagebox.showerror('Error', 'Debits must equal credits')
                 return
-            did = self.account_id_by_display.get(debit_acct)
-            cid = self.account_id_by_display.get(credit_acct)
+            did = self._resolve_account_id(debit_acct)
+            cid = self._resolve_account_id(credit_acct)
             lines = [JournalLine(account_id=did, debit=debit_amt), JournalLine(account_id=cid, credit=credit_amt)]
             entry_id = self.engine.record_entry(
                 date,
@@ -3410,7 +4728,7 @@ class TechFixApp(tk.Tk):
         
         # Income Statement Tab
         self.income_statement_frame = ttk.Frame(self.fs_notebook, style="Techfix.Surface.TFrame")
-        self.fs_notebook.add(self.income_statement_frame, text="Income Statement")
+        self.fs_notebook.add(self.income_statement_frame, text="Profit & Loss")
         
         # Balance Sheet Tab
         self.balance_sheet_frame = ttk.Frame(self.fs_notebook, style="Techfix.Surface.TFrame")
@@ -3801,7 +5119,7 @@ class TechFixApp(tk.Tk):
             
             # Format the income statement
             content = []
-            content.append(('Income Statement\n', 'header'))
+            content.append(('Profit & Loss Statement\n', 'header'))
             content.append((f'For the period ended {as_of_date or "current date"}\n\n', 'subheader'))
             
             # Add revenues
@@ -3817,7 +5135,7 @@ class TechFixApp(tk.Tk):
                 content.append((f'{name}: {fmt(amount)}\n', None))
             
             content.append((f'\nTotal Expenses: {fmt(total_expenses)}\n\n', 'total'))
-            content.append((f'Net Income: {fmt(net_income)}\n', 'net'))
+            content.append((f'Net Income (Profit/Loss): {fmt(net_income)}\n', 'net'))
             
             # Update the text widget using the custom update_text method
             self.income_text.config(state=tk.NORMAL)
@@ -4360,6 +5678,66 @@ class TechFixApp(tk.Tk):
                 row=r, column=c, padx=8, pady=8, sticky="ew"
             )
 
+    # --------------------- Audit Tab ---------------------
+    def _build_audit_tab(self) -> None:
+        frame = self.tab_audit
+        controls = ttk.Frame(frame, style="Techfix.Surface.TFrame")
+        controls.pack(fill=tk.X, padx=12, pady=8)
+        ttk.Label(controls, text="Filter:", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT)
+        self.audit_filter_var = tk.StringVar(value="")
+        ttk.Entry(controls, textvariable=self.audit_filter_var, width=24, style="Techfix.TEntry").pack(side=tk.LEFT, padx=(6,12))
+        ttk.Button(controls, text="Refresh", command=lambda: self._load_audit_log(), style="Techfix.TButton").pack(side=tk.LEFT)
+        ttk.Button(controls, text="Export CSV", command=lambda: self._export_audit_csv(), style="Techfix.TButton").pack(side=tk.LEFT, padx=(6,0))
+
+        cols = ("id","timestamp","user","action","details")
+        self.audit_tree = ttk.Treeview(frame, columns=cols, show="headings", style="Techfix.Treeview")
+        for c in cols:
+            anchor = tk.W
+            width = 100 if c in ("id","user") else (160 if c=="timestamp" else 640)
+            self.audit_tree.heading(c, text=c.title(), anchor=anchor)
+            self.audit_tree.column(c, stretch=True, width=width, anchor=anchor)
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=self.audit_tree.yview)
+        self.audit_tree.configure(yscrollcommand=vsb.set)
+        self.audit_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        vsb.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 12))
+        try:
+            self._load_audit_log()
+        except Exception:
+            pass
+
+    def _load_audit_log(self) -> None:
+        try:
+            if hasattr(self, 'audit_tree'):
+                for it in self.audit_tree.get_children():
+                    self.audit_tree.delete(it)
+            filt = (self.audit_filter_var.get().strip().lower() if hasattr(self, 'audit_filter_var') else '')
+            rows = db.list_audit_log(limit=500, conn=self.engine.conn)
+            for r in rows:
+                act = r['action'] if 'action' in r.keys() else ''
+                det = r['details'] if 'details' in r.keys() else ''
+                if filt and (filt not in str(act).lower() and filt not in str(det).lower()):
+                    continue
+                self.audit_tree.insert('', 'end', values=(r['id'], r['timestamp'], r['user'], act, det))
+        except Exception:
+            pass
+
+    def _export_audit_csv(self) -> None:
+        try:
+            from pathlib import Path
+            rows = []
+            for it in self.audit_tree.get_children():
+                rows.append(self.audit_tree.item(it, 'values'))
+            out = Path(str(db.DB_DIR)) / 'audit_export.csv'
+            import csv
+            with out.open('w', newline='', encoding='utf-8') as f:
+                w = csv.writer(f)
+                w.writerow(["id","timestamp","user","action","details"])
+                for r in rows:
+                    w.writerow(list(r))
+            messagebox.showinfo('Export', f'CSV exported: {out}')
+        except Exception as e:
+            messagebox.showerror('Export', f'Failed to export audit: {e}')
+
     def _export_journal(self) -> None:
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel","*.xlsx")])
         if not path:
@@ -4521,7 +5899,7 @@ class TechFixApp(tk.Tk):
             income_content = self.income_text.get("1.0", tk.END).splitlines()
             self.income_text.config(state=tk.DISABLED)
             if any(line.strip() for line in income_content):
-                statements.append(("Income Statement", income_content))
+                statements.append(("Profit & Loss", income_content))
             
             # Get Balance Sheet
             self.balance_sheet_text.config(state=tk.NORMAL)
@@ -4741,7 +6119,7 @@ class TechFixApp(tk.Tk):
             income_lines = self.income_text.get("1.0", tk.END).splitlines()
             self.income_text.config(state=tk.DISABLED)
             if any(line.strip() for line in income_lines):
-                ws_inc = wb.create_sheet(title="Income Statement")
+                ws_inc = wb.create_sheet(title="Profit & Loss")
                 for ridx, line in enumerate(income_lines, start=1):
                     ws_inc.cell(row=ridx, column=1, value=line)
                 ws_inc.column_dimensions[get_column_letter(1)].width = 120
@@ -4830,7 +6208,7 @@ class TechFixApp(tk.Tk):
             y = draw_title("Key Features", y)
             features = [
                 "• Journalization, Ledger, Trial Balance (adjusted/unadjusted)",
-                "• Financial Statements (Income Statement, Balance Sheet, Cash Flow)",
+                "• Financial Statements (Profit & Loss, Balance Sheet, Cash Flow)",
                 "• Closing and Post-Closing Trial Balance, Reversing Schedule",
                 "• Exports: Journal/Ledger/TB/Financials to Excel; All-in-one workbook",
                 "• Configurable data directory via TECHFIX_DATA_DIR",
@@ -4886,7 +6264,7 @@ class TechFixApp(tk.Tk):
 
             y = draw_title("Equations & Treatment", y)
             eq_lines = [
-                "• Income Statement: Net Income = Revenues − Expenses.",
+                "• Income Statement (Profit & Loss): Net Income (Profit/Loss) = Revenues − Expenses.",
                 "• Owner’s Equity Statement: Ending Capital = Beginning Capital + Net Income − Withdrawals.",
                 "• Balance Sheet: Assets = Liabilities + Ending Owner’s Equity.",
                 "• Contra‑assets reduce total assets (e.g., accumulated depreciation).",
@@ -4998,6 +6376,25 @@ class TechFixApp(tk.Tk):
                 name = r['name'] if 'name' in r.keys() else ''
                 d, c = self._balance_to_columns(r)
                 self.pctb_tree.insert('', 'end', values=(code, name, f"{d:,.2f}" if d else '', f"{c:,.2f}" if c else ''))
+            try:
+                total_d = 0.0
+                total_c = 0.0
+                for iid in self.pctb_tree.get_children():
+                    vals = self.pctb_tree.item(iid, 'values')
+                    try:
+                        if vals and vals[2]:
+                            total_d += float(str(vals[2]).replace(',', ''))
+                    except Exception:
+                        pass
+                    try:
+                        if vals and vals[3]:
+                            total_c += float(str(vals[3]).replace(',', ''))
+                    except Exception:
+                        pass
+                self.pctb_tree.insert('', 'end', values=("", "Totals", f"{total_d:,.2f}", f"{total_c:,.2f}"), tags=('totals',))
+                self.pctb_tree.tag_configure('totals', background=self.palette.get('tab_selected_bg', '#e0ecff'))
+            except Exception:
+                pass
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load post-closing TB: {e}")
 

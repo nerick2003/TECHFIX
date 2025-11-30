@@ -1,5 +1,7 @@
 import unittest
 from datetime import date, timedelta
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from techfix import db
 from techfix.accounting import AccountingEngine, JournalLine
