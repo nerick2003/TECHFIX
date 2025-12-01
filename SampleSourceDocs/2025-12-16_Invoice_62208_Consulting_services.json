@@ -1,0 +1,10 @@
+{
+  "date": "2025-12-16",
+  "description": "Consulting services",
+  "source_type": "Invoice",
+  "document_ref": "INV-62208",
+  "debit_account": "Accounts Receivable",
+  "credit_account": "Sales Revenue",
+  "debit_amount": "3055.57",
+  "credit_amount": "3055.57"
+}

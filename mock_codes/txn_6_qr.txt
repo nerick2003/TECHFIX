@@ -1,0 +1,1 @@
+{"date":"2025-12-09","source_type":"Payroll","document_ref":"75723","external_ref":"PAY-75723","description":"Benefits payment","debit_amount":2006.44,"credit_amount":2006.44,"memo":"Transaction 6"}

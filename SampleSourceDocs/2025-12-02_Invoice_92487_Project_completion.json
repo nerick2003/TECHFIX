@@ -1,0 +1,11 @@
+{
+  "date": "2025-12-02",
+  "description": "Project completion",
+  "source_type": "Invoice",
+  "document_ref": "INV-92487",
+  "debit_account": "Accounts Receivable",
+  "credit_account": "Sales Revenue",
+  "debit_amount": "3566.69",
+  "credit_amount": "3566.69",
+  "memo": "Transaction 1 - Project completion"
+}

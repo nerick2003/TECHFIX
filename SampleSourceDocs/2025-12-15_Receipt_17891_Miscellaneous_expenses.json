@@ -1,0 +1,11 @@
+{
+  "date": "2025-12-15",
+  "description": "Miscellaneous expenses",
+  "source_type": "Receipt",
+  "document_ref": "RCP-17891",
+  "debit_account": "Rent Expense",
+  "credit_account": "Cash",
+  "debit_amount": "2953.25",
+  "credit_amount": "2953.25",
+  "memo": "Transaction 2 - Miscellaneous expenses"
+}

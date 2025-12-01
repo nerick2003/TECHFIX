@@ -1,0 +1,11 @@
+{
+  "date": "2025-12-27",
+  "description": "Prepaid adjustment",
+  "source_type": "Adjust",
+  "document_ref": "ADJ-79715",
+  "debit_account": "Cost of Goods Sold",
+  "credit_account": "Cash",
+  "debit_amount": "4182.08",
+  "credit_amount": "4182.08",
+  "memo": "Transaction 3 - Prepaid adjustment"
+}

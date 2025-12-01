@@ -1,0 +1,10 @@
+{
+  "date": "2025-12-23",
+  "description": "Fee charged",
+  "source_type": "Bank",
+  "document_ref": "BANK-13224",
+  "debit_account": "Utilities Expense",
+  "credit_account": "Cash",
+  "debit_amount": "1804.98",
+  "credit_amount": "1804.98"
+}

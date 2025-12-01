@@ -1571,6 +1571,7 @@ class TechFixApp(tk.Tk):
         self.tab_postclosing = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
         self.tab_export = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
         self.tab_audit = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
+        self.tab_help = ttk.Frame(self.content_area, style="Techfix.Surface.TFrame")
 
         self._build_transactions_tab()
         self._build_journal_tab()
@@ -1582,6 +1583,7 @@ class TechFixApp(tk.Tk):
         self._build_postclosing_tab()
         self._build_export_tab()
         self._build_audit_tab()
+        self._build_help_tab()
 
         # Build simple sidebar navigation (shows/hides content frames)
         # Add a profile/header area inside the sidebar
@@ -1648,6 +1650,7 @@ class TechFixApp(tk.Tk):
         make_nav("Post-Closing", 7, "📈")
         make_nav("Export", 8, "⬇️")
         make_nav("Audit Log", 9, "🧪")
+        make_nav("How to Use?", 10, "❓")
 
         # Keep an ordered list of the content frames to show/hide
         self._tab_frames = [
@@ -1661,6 +1664,7 @@ class TechFixApp(tk.Tk):
             self.tab_postclosing,
             self.tab_export,
             self.tab_audit,
+            self.tab_help,
         ]
 
         exit_wrap = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
@@ -3530,79 +3534,92 @@ class TechFixApp(tk.Tk):
     def _build_adjust_tab(self) -> None:
         frame = self.tab_adjust
 
+        # Root content area for the Adjustments tab
         content = ttk.Frame(frame, style="Techfix.Surface.TFrame")
-        content.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        # Outer padding kept modest so controls stay large but avoid huge empty borders
+        content.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         content.grid_rowconfigure(0, weight=1)
+        # Give the requests panel a little more width than the common adjustments panel
         content.grid_columnconfigure(0, weight=1)
-        content.grid_columnconfigure(1, weight=1)
+        content.grid_columnconfigure(1, weight=2)
 
-        # Common Adjustments section
-        f = ttk.Labelframe(content, text="Common Adjustments", style="Techfix.TLabelframe")
-        f.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(2, 0))
+        # Common Adjustments section (left)
+        f = ttk.Labelframe(
+            content,
+            text="Common Adjustments",
+            style="Techfix.TLabelframe",
+            padding=(10, 8)
+        )
+        # A bit of horizontal space between the two main sections
+        f.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 0))
 
         # Configure columns - make entry fields expand
         f.columnconfigure(0, weight=0)  # Labels
         f.columnconfigure(1, weight=3)  # Entry fields (3x weight)
         f.columnconfigure(2, weight=1)  # Buttons (1x weight)
 
-        # Configure rows to be compact
+        # Configure rows with a little vertical breathing room
         for i in range(4):
-            f.rowconfigure(i, weight=0, pad=2)
+            f.rowconfigure(i, weight=0, pad=4)
 
         # Date input row - using grid for better control
-        ttk.Label(f, text="Date:").grid(row=0, column=0, sticky="e", padx=2, pady=2)
+        ttk.Label(f, text="Date:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
         self.adjust_date = ttk.Entry(f, style="Techfix.TEntry")
-        self.adjust_date.grid(row=0, column=1, sticky="we", padx=2, pady=2)
+        self.adjust_date.grid(row=0, column=1, sticky="we", padx=4, pady=4)
         btns = ttk.Frame(f, style="Techfix.Surface.TFrame")
-        btns.grid(row=0, column=2, sticky="ew", padx=2, pady=2)
-        ttk.Button(btns, text="📅", command=self._pick_adjust_date, style="Techfix.TButton", width=3).pack(side=tk.LEFT, padx=(0,4))
+        btns.grid(row=0, column=2, sticky="ew", padx=4, pady=4)
+        ttk.Button(btns, text="📅", command=self._pick_adjust_date, style="Techfix.TButton", width=3).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(btns, text="Today", command=lambda: self._set_entry_today(self.adjust_date), style="Techfix.TButton").pack(side=tk.LEFT)
 
         # Adjustment controls in a grid
         row = 1
 
         # Row 1: Supplies
-        ttk.Label(f, text="Supplies:").grid(row=row, column=0, sticky="e", padx=2, pady=2)
+        ttk.Label(f, text="Supplies:").grid(row=row, column=0, sticky="e", padx=4, pady=4)
         self.sup_remaining = ttk.Entry(f, style="Techfix.TEntry")
-        self.sup_remaining.grid(row=row, column=1, sticky="we", padx=2, pady=2)
+        self.sup_remaining.grid(row=row, column=1, sticky="we", padx=4, pady=4)
         ttk.Button(f, text="Adjust", command=self._do_adjust_supplies,
-                  style="Techfix.TButton").grid(row=row, column=2, padx=2, pady=2, sticky="ew")
+                  style="Techfix.TButton").grid(row=row, column=2, padx=4, pady=4, sticky="ew")
 
         # Row 2: Prepaid Rent
         row += 1
-        ttk.Label(f, text="Prepaid Rent:").grid(row=row, column=0, sticky="e", padx=2, pady=2)
+        ttk.Label(f, text="Prepaid Rent:").grid(row=row, column=0, sticky="e", padx=4, pady=4)
         self.prepaid_amt = ttk.Entry(f, style="Techfix.TEntry")
-        self.prepaid_amt.grid(row=row, column=1, sticky="we", padx=2, pady=2)
+        self.prepaid_amt.grid(row=row, column=1, sticky="we", padx=4, pady=4)
         ttk.Button(f, text="Amortize", command=self._do_amortize_prepaid,
-                  style="Techfix.TButton").grid(row=row, column=2, padx=2, pady=2, sticky="ew")
+                  style="Techfix.TButton").grid(row=row, column=2, padx=4, pady=4, sticky="ew")
 
         # Row 3: Depreciation
         row += 1
-        ttk.Label(f, text="Depreciation:").grid(row=row, column=0, sticky="e", padx=2, pady=2)
+        ttk.Label(f, text="Depreciation:").grid(row=row, column=0, sticky="e", padx=4, pady=4)
         self.depr_amt = ttk.Entry(f, style="Techfix.TEntry")
-        self.depr_amt.grid(row=row, column=1, sticky="we", padx=2, pady=2)
+        self.depr_amt.grid(row=row, column=1, sticky="we", padx=4, pady=4)
         ttk.Button(f, text="Calculate", command=self._do_depreciate,
-                  style="Techfix.TButton").grid(row=row, column=2, padx=2, pady=2, sticky="ew")
+                  style="Techfix.TButton").grid(row=row, column=2, padx=4, pady=4, sticky="ew")
 
         # Configure column weights for the labelframe
         f.columnconfigure(1, weight=1)  # Entry fields expand
 
-        # Adjustment Requests section
-        queue = ttk.Labelframe(content, text="Adjustment Requests & Approvals",
-                              style="Techfix.TLabelframe")
-        queue.grid(row=0, column=1, sticky="nsew", padx=(0, 0), pady=(2, 0))
+        # Adjustment Requests section (right)
+        queue = ttk.Labelframe(
+            content,
+            text="Adjustment Requests & Approvals",
+            style="Techfix.TLabelframe",
+            padding=(10, 8)
+        )
+        queue.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=(0, 0))
 
         # Input form frame
         queue_inputs = ttk.Frame(queue, style="Techfix.Surface.TFrame")
-        queue_inputs.pack(fill=tk.X, padx=2, pady=2)
+        queue_inputs.pack(fill=tk.X, padx=4, pady=(0, 6))
 
         # Description row
         desc_frame = ttk.Frame(queue_inputs, style="Techfix.Surface.TFrame")
-        desc_frame.pack(fill=tk.X, pady=(0, 4))
-        ttk.Label(desc_frame, text="Description:").pack(side=tk.LEFT, padx=(0, 4))
+        desc_frame.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(desc_frame, text="Description:").pack(side=tk.LEFT, padx=(0, 6))
         self.adjust_desc = ttk.Entry(desc_frame, style="Techfix.TEntry")
-        self.adjust_desc.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-        ttk.Label(desc_frame, text="By:").pack(side=tk.LEFT, padx=(0, 4))
+        self.adjust_desc.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        ttk.Label(desc_frame, text="By:").pack(side=tk.LEFT, padx=(0, 6))
         self.adjust_requested_by = ttk.Entry(desc_frame, style="Techfix.TEntry", width=15)
         self.adjust_requested_by.pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(desc_frame, text="Add Request", command=self._queue_adjustment_request,
@@ -3610,14 +3627,14 @@ class TechFixApp(tk.Tk):
 
         # Notes row
         notes_frame = ttk.Frame(queue_inputs, style="Techfix.Surface.TFrame")
-        notes_frame.pack(fill=tk.X)
-        ttk.Label(notes_frame, text="Notes:").pack(side=tk.LEFT, padx=(0, 4))
+        notes_frame.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(notes_frame, text="Notes:").pack(side=tk.LEFT, padx=(0, 6))
         self.adjust_notes = ttk.Entry(notes_frame, style="Techfix.TEntry")
-        self.adjust_notes.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.adjust_notes.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
 
         # Treeview frame (use grid so scrollbars attach reliably)
         tree_frame = ttk.Frame(queue, style="Techfix.Surface.TFrame")
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
         # Treeview for adjustments
         cols = ("id", "description", "requested_on", "status", "notes")
@@ -3626,7 +3643,8 @@ class TechFixApp(tk.Tk):
             columns=cols,
             show="headings",
             style="Techfix.Treeview",
-            height=15,
+            # Slightly shorter so bottom buttons remain visible on smaller screens
+            height=10,
             selectmode="extended"
         )
 
@@ -3671,7 +3689,7 @@ class TechFixApp(tk.Tk):
 
         # Action buttons frame
         btn_frame = ttk.Frame(queue, style="Techfix.Surface.TFrame")
-        btn_frame.pack(fill=tk.X, padx=2, pady=2)
+        btn_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
 
         # Add buttons with pack
         buttons = [
@@ -5378,14 +5396,25 @@ class TechFixApp(tk.Tk):
         controls = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         controls.pack(fill=tk.X, padx=12, pady=8)
 
-        ttk.Label(controls, text="As of (YYYY-MM-DD):", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT)
+        ttk.Label(controls, text="As of (YYYY-MM-DD):", style="Techfix.TLabel").pack(side=tk.LEFT)
         self.tb_date = ttk.Entry(controls, width=14, style="Techfix.TEntry")
         self.tb_date.pack(side=tk.LEFT, padx=(6, 12))
+        # Make this date field blend with the toolbar in both themes (no bright OS border)
+        try:
+            self.tb_date.configure(
+                highlightthickness=0,
+                bd=0,
+                relief=tk.FLAT,
+                highlightbackground=self.palette.get("surface_bg", "#ffffff"),
+                highlightcolor=self.palette.get("surface_bg", "#ffffff"),
+            )
+        except Exception:
+            pass
 
         ttk.Button(controls, text="Refresh", command=self._load_trial_balances, style="Techfix.TButton").pack(side=tk.LEFT)
         # Export trial balance to Excel
         ttk.Button(controls, text="Export to Excel", command=lambda: self._export_tree_to_excel(self.trial_tree, default_name=f"trial_balance_{self.tb_date.get() if hasattr(self, 'tb_date') else ''}.xlsx"), style="Techfix.TButton").pack(side=tk.LEFT, padx=(6,0))
-        self.tb_status_label = ttk.Label(controls, text="Unadjusted Trial Balance", style="Techfix.AppBar.TLabel")
+        self.tb_status_label = ttk.Label(controls, text="Unadjusted Trial Balance", style="Techfix.TLabel")
         self.tb_status_label.pack(side=tk.RIGHT)
 
         cols = ("code", "name", "debit", "credit")
@@ -6228,20 +6257,37 @@ class TechFixApp(tk.Tk):
         # Right pane: Reversing Schedule
         sched_wrap = ttk.Labelframe(content, text="Reversing Entry Schedule", style="Techfix.TLabelframe")
         sched_wrap.grid(row=0, column=1, sticky="nsew", padx=0)
-        schedule_controls = ttk.Frame(sched_wrap, style="Techfix.Surface.TFrame")
-        schedule_controls.pack(fill=tk.X, padx=4, pady=(4, 4))
-        ttk.Button(schedule_controls, text="Refresh Schedule", command=self._load_reversing_queue, style="Techfix.TButton").pack(side=tk.LEFT, padx=8)
-        ttk.Button(schedule_controls, text="Complete Reversing Schedule", command=self._complete_reversing_schedule_action, style="Techfix.TButton").pack(side=tk.LEFT, padx=8)
+
+        # Inner frame to keep the treeview and its scrollbar together at the top
+        sched_inner = ttk.Frame(sched_wrap, style="Techfix.Surface.TFrame")
+        sched_inner.pack(fill=tk.BOTH, expand=True, padx=0, pady=(0, 4))
+
         rcols = ("id", "original_entry", "reverse_on", "reversal_entry", "status")
-        self.reversing_tree = ttk.Treeview(sched_wrap, columns=rcols, show="headings", style="Techfix.Treeview")
+        self.reversing_tree = ttk.Treeview(sched_inner, columns=rcols, show="headings", style="Techfix.Treeview")
         for c in rcols:
             width = 80 if c == "id" else 140
             self.reversing_tree.heading(c, text=c.replace("_", " ").title(), anchor="w")
             self.reversing_tree.column(c, width=width, stretch=(c != "status"))
-        rev_scroll = ttk.Scrollbar(sched_wrap, orient=tk.VERTICAL, command=self.reversing_tree.yview)
+        rev_scroll = ttk.Scrollbar(sched_inner, orient=tk.VERTICAL, command=self.reversing_tree.yview)
         self.reversing_tree.configure(yscrollcommand=rev_scroll.set)
-        self.reversing_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
-        rev_scroll.pack(side=tk.LEFT, fill=tk.Y, padx=(0,4), pady=4)
+        self.reversing_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=(4, 0))
+        rev_scroll.pack(side=tk.LEFT, fill=tk.Y, padx=(0,4), pady=(4, 0))
+
+        # Controls row directly under the treeview (bottom of this labelframe)
+        schedule_controls = ttk.Frame(sched_wrap, style="Techfix.Surface.TFrame")
+        schedule_controls.pack(fill=tk.X, padx=4, pady=(0, 6))
+        ttk.Button(
+            schedule_controls,
+            text="Refresh Schedule",
+            command=self._load_reversing_queue,
+            style="Techfix.TButton",
+        ).pack(side=tk.LEFT, padx=8)
+        ttk.Button(
+            schedule_controls,
+            text="Complete Reversing Schedule",
+            command=self._complete_reversing_schedule_action,
+            style="Techfix.TButton",
+        ).pack(side=tk.LEFT, padx=8)
 
     def _load_reversing_queue(self) -> None:
         """Load the reversing entry schedule into the treeview."""
@@ -6355,6 +6401,127 @@ class TechFixApp(tk.Tk):
             messagebox.showinfo('Export', f'CSV exported: {out}')
         except Exception as e:
             messagebox.showerror('Export', f'Failed to export audit: {e}')
+
+    # --------------------- Help / How To Use Tab ---------------------
+    def _build_help_tab(self) -> None:
+        """Build a styled in‑app 'How to Use?' guide."""
+        frame = self.tab_help
+
+        container = ttk.Frame(frame, style="Techfix.Surface.TFrame")
+        container.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        # Header / title
+        header = ttk.Frame(container, style="Techfix.Surface.TFrame")
+        header.pack(fill=tk.X, pady=(0, 12))
+
+        ttk.Label(
+            header,
+            text="How to Use TechFix",
+            style="Techfix.TLabel",
+        ).pack(side=tk.LEFT, anchor=tk.W)
+
+        ttk.Label(
+            header,
+            text="Quick guide to the full accounting cycle inside TechFix",
+            style="Techfix.TLabel",
+        ).pack(side=tk.LEFT, anchor=tk.W, padx=(16, 0))
+
+        # Card‑style body to match other surfaces, works in light & dark themes
+        body = ttk.Frame(container, style="Techfix.Surface.TFrame")
+        body.pack(fill=tk.BOTH, expand=True)
+
+        # Add a subtle border using a Canvas background color
+        body_inner = ttk.Frame(body, style="Techfix.Surface.TFrame")
+        body_inner.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # Scrollable text area for instructions
+        text_frame = ttk.Frame(body_inner, style="Techfix.Surface.TFrame")
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        bg_color = self.palette.get("surface_bg", "#ffffff")
+        fg_color = self.palette.get("text_primary", "#1f2937")
+
+        help_text = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            bg=bg_color,
+            fg=fg_color,
+            font=FONT_BASE,
+            relief=tk.FLAT,
+            bd=0,
+            padx=10,
+            pady=10,
+            highlightthickness=0,
+            insertbackground=self.palette.get("accent_color", "#2563eb"),
+            state=tk.NORMAL,
+        )
+        vsb = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=help_text.yview)
+        help_text.configure(yscrollcommand=vsb.set)
+        help_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # High‑level step‑by‑step guide with clear sections
+        guide = (
+            "Welcome to TechFix\n"
+            "===================\n\n"
+            "TechFix walks you through the full accounting cycle, from daily transactions\n"
+            "all the way to post‑closing trial balance. Use the tabs in the left sidebar\n"
+            "from top to bottom for the smoothest workflow.\n\n"
+            "1. Set up your accounting period\n"
+            "--------------------------------\n"
+            "• Make sure the current accounting period is correct (for example: January 2025).\n"
+            "• All journal entries will be recorded into this active period.\n\n"
+            "2. Record daily transactions (Transactions tab)\n"
+            "----------------------------------------------\n"
+            "• Open the Transactions tab.\n"
+            "• Choose or attach the source document (invoice, receipt, bill, etc.).\n"
+            "• Optionally scan / prefill from a document or QR/barcode.\n"
+            "• Or click the manual entry option and paste structured data (JSON or key=value).\n"
+            "• Confirm that Date, Description, Debit account, Credit account, and Amounts\n"
+            "  are all filled in.\n"
+            "• Click Record / Post to save the journal entry.\n\n"
+            "3. Review the Journal (Journal tab)\n"
+            "-----------------------------------\n"
+            "• View all posted entries in chronological order.\n"
+            "• Use filters or exports (where available) to review specific transactions.\n\n"
+            "4. Check account activity (Ledger tab)\n"
+            "--------------------------------------\n"
+            "• Open the Ledger tab and select an account (e.g., Cash, Accounts Receivable).\n"
+            "• Review each posting and the running balance for that account.\n\n"
+            "5. Prepare the Trial Balance (Trial Balance tab)\n"
+            "-----------------------------------------------\n"
+            "• Confirm that total debits equal total credits for the period.\n"
+            "• If they do not match, drill back into the Journal or Ledger to locate and\n"
+            "  fix errors.\n\n"
+            "6. Post Adjusting Entries (Adjustments tab)\n"
+            "-------------------------------------------\n"
+            "• Record adjustments such as supplies used, depreciation, prepaid expenses,\n"
+            "  and accruals.\n"
+            "• After you post adjustments, regenerate the adjusted trial balance if needed.\n\n"
+            "7. Generate Financial Statements (Fin. Statements tab)\n"
+            "------------------------------------------------------\n"
+            "• Review the Income Statement, Statement of Owner's Equity, and Balance Sheet\n"
+            "  for the active period.\n\n"
+            "8. Perform Closing Entries (Closing & Post‑Closing tabs)\n"
+            "--------------------------------------------------------\n"
+            "• Use the Closing tab to close revenue, expense, and drawings accounts.\n"
+            "• Then open the Post‑Closing tab to generate the post‑closing trial balance.\n\n"
+            "9. Review system history (Audit Log tab)\n"
+            "----------------------------------------\n"
+            "• Use the Audit Log to see a technical history of key actions (prefill attempts,\n"
+            "  document loading, exports, UI changes, etc.).\n"
+            "• Use the filter box to search by action or details, or export to CSV.\n\n"
+            "Helpful tips\n"
+            "------------\n"
+            "• If manual entry data does not fill accounts automatically, include\n"
+            "  debit_account and credit_account (or valid account codes/names) in your data.\n"
+            "• Use the Export options to back up your journal, trial balance, and audit log.\n"
+            "• Working through the tabs in order (Transactions → … → Post‑Closing) mirrors\n"
+            "  the standard accounting cycle and keeps your workflow simple.\n"
+        )
+
+        help_text.insert("1.0", guide)
+        help_text.configure(state=tk.DISABLED)
 
     def _export_journal(self) -> None:
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel","*.xlsx")])

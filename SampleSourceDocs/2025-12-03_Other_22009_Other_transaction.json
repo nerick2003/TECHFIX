@@ -1,0 +1,11 @@
+{
+  "date": "2025-12-03",
+  "description": "Other transaction",
+  "source_type": "Other",
+  "document_ref": "OTH-22009",
+  "debit_account": "Prepaid Rent",
+  "credit_account": "Rent Expense",
+  "debit_amount": "3129.41",
+  "credit_amount": "3129.41",
+  "memo": "Transaction 5 - Other transaction"
+}

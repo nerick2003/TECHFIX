@@ -1,0 +1,1 @@
+{"date":"2025-12-20","source_type":"Invoice","document_ref":"92345","external_ref":"INV-92345","description":"Project completion","debit_amount":817.2,"credit_amount":817.2,"memo":"Transaction 15"}

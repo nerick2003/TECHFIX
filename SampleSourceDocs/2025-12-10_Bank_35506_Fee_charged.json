@@ -1,0 +1,11 @@
+{
+  "date": "2025-12-10",
+  "description": "Fee charged",
+  "source_type": "Bank",
+  "document_ref": "BANK-35506",
+  "debit_account": "Rent Expense",
+  "credit_account": "Cash",
+  "debit_amount": "3742.78",
+  "credit_amount": "3742.78",
+  "memo": "Transaction 3 - Fee charged"
+}

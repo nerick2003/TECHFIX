@@ -1,0 +1,1 @@
+{"date":"2025-12-06","source_type":"Receipt","document_ref":"14834","external_ref":"REC-14834","description":"Equipment purchase","debit_amount":966.42,"credit_amount":966.42,"memo":"Transaction 4"}

@@ -1,0 +1,10 @@
+{
+  "date": "2025-12-16",
+  "description": "Maintenance services",
+  "source_type": "Receipt",
+  "document_ref": "RCP-34779",
+  "debit_account": "Cost of Goods Sold",
+  "credit_account": "Cash",
+  "debit_amount": "2995.09",
+  "credit_amount": "2995.09"
+}

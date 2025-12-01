@@ -1,0 +1,11 @@
+{
+  "date": "2025-12-10",
+  "description": "Depreciation adjustment",
+  "source_type": "Adjust",
+  "document_ref": "ADJ-51740",
+  "debit_account": "Supplies Expense",
+  "credit_account": "Prepaid Rent",
+  "debit_amount": "420.04",
+  "credit_amount": "420.04",
+  "memo": "Transaction 8 - Depreciation adjustment"
+}

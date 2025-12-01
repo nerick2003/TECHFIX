@@ -1,0 +1,10 @@
+{
+  "date": "2025-12-16",
+  "description": "Client services - December",
+  "source_type": "Invoice",
+  "document_ref": "INV-66914",
+  "debit_account": "Accounts Receivable",
+  "credit_account": "Sales Revenue",
+  "debit_amount": "4232.19",
+  "credit_amount": "4232.19"
+}

@@ -1,0 +1,1 @@
+{"date":"2025-12-10","source_type":"Payroll","document_ref":"71158","external_ref":"PAY-71158","description":"Payroll taxes","debit_amount":1730.33,"credit_amount":1730.33,"memo":"Transaction 3"}

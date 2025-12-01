@@ -1,0 +1,10 @@
+{
+  "date": "2025-12-06",
+  "description": "Employee salaries",
+  "source_type": "Payroll",
+  "document_ref": "PAY-96374",
+  "debit_account": "Salaries Expense",
+  "credit_account": "Cash",
+  "debit_amount": "3060.39",
+  "credit_amount": "3060.39"
+}
