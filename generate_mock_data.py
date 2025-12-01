@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Mock Data Generator for TechFix
 Generates mock_codes, mock_codes_jpg, and SampleSourceDocs files
