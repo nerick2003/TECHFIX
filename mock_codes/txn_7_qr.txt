@@ -1,1 +1,0 @@
-{"date":"2025-12-24","source_type":"Bank","document_ref":"68866","external_ref":"BAN-68866","description":"Payment received","debit_amount":1529.14,"credit_amount":1529.14,"memo":"Transaction 7"}

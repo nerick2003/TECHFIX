@@ -1,1 +1,0 @@
-{"date":"2025-12-15","source_type":"Other","document_ref":"57974","external_ref":"OTH-57974","description":"General entry","debit_amount":716.47,"credit_amount":716.47,"memo":"Transaction 1"}

@@ -393,27 +393,37 @@ def seed_chart_of_accounts(conn: Optional[sqlite3.Connection] = None) -> None:
     if not conn:
         conn = get_connection()
     try:
+        # Seed using the reference Chart of Accounts (codes, titles, groups)
+        # This drives the debit/credit account dropdowns throughout the app.
         accounts = [
+            # Account No., Account Title, Account Group, Normal side, Is permanent (1 = balance sheet)
             ("101", "Cash", "Asset", "Debit", 1),
-            ("106", "Accounts Receivable", "Asset", "Debit", 1),
-            ("124", "Supplies", "Asset", "Debit", 1),
-            ("128", "Prepaid Rent", "Asset", "Debit", 1),
-            ("167", "Equipment", "Asset", "Debit", 1),
-            ("168", "Accumulated Depreciation - Equipment", "Contra Asset", "Credit", 1),
+            ("102", "Accounts Receivable", "Asset", "Debit", 1),
+            ("103", "Input Tax", "Asset", "Debit", 1),
+            ("104", "Office Equipment", "Asset", "Debit", 1),
+            ("105", "Accumulated Depreciation", "Contra Asset", "Credit", 1),
+
             ("201", "Accounts Payable", "Liability", "Credit", 1),
-            ("213", "Utilities Payable", "Liability", "Credit", 1),
-            ("212", "Salaries Payable", "Liability", "Credit", 1),
-            ("230", "Unearned Revenue", "Liability", "Credit", 1),
+            ("202", "Utilities Payable", "Liability", "Credit", 1),
+            ("203", "Withholding Taxes Payable", "Liability", "Credit", 1),
+            ("204", "SSS, PhilHealth, and Pag-Ibig Payable", "Liability", "Credit", 1),
+            ("205", "Expanded Withholding Tax Payable", "Liability", "Credit", 1),
+            ("206", "Accrued Percentage Tax Payable", "Liability", "Credit", 1),
+
             ("301", "Owner's Capital", "Equity", "Credit", 1),
             ("302", "Owner's Drawings", "Equity", "Debit", 1),
-            ("401", "Service Revenue", "Revenue", "Credit", 0),
-            ("402", "Sales Revenue", "Revenue", "Credit", 0),
-            ("501", "Rent Expense", "Expense", "Debit", 0),
-            ("502", "Salaries Expense", "Expense", "Debit", 0),
-            ("503", "Supplies Expense", "Expense", "Debit", 0),
-            ("504", "Depreciation Expense", "Expense", "Debit", 0),
-            ("505", "Utilities Expense", "Expense", "Debit", 0),
-            ("506", "Cost of Goods Sold", "Expense", "Debit", 0),
+
+            ("401", "Service Income", "Revenue", "Credit", 0),
+
+            ("402", "Salaries & Wages", "Expense", "Debit", 0),
+            ("403", "Rent Expense", "Expense", "Debit", 0),
+            ("404", "Utilities Expense", "Expense", "Debit", 0),
+            ("405", "Supplies Expense", "Expense", "Debit", 0),
+            ("406", "PhilHealth, Pag-Ibig and SSS Contributions", "Expense", "Debit", 0),
+            ("407", "Depreciation Expense", "Expense", "Debit", 0),
+            ("408", "Transportation Expense", "Expense", "Debit", 0),
+            ("409", "Percentage Tax Expense", "Expense", "Debit", 0),
+            ("410", "Income Summary", "Expense", "Debit", 0),
         ]
         # is_permanent: 1 for balance sheet accounts
         rows = [

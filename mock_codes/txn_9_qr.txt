@@ -1,1 +1,0 @@
-{"date":"2025-12-25","source_type":"Invoice","document_ref":"28972","external_ref":"INV-28972","description":"Monthly retainer","debit_amount":4970.13,"credit_amount":4970.13,"memo":"Transaction 9"}

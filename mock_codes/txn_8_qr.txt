@@ -1,1 +1,0 @@
-{"date":"2025-12-14","source_type":"Payroll","document_ref":"92946","external_ref":"PAY-92946","description":"Benefits payment","debit_amount":419.22,"credit_amount":419.22,"memo":"Transaction 8"}

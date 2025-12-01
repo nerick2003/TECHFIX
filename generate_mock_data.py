@@ -16,25 +16,54 @@ from barcode import Code128
 from barcode.writer import ImageWriter
 from PIL import Image
 
-# Account names from chart of accounts
+# Account names from the app's Chart of Accounts (must stay in sync with techfix.db.seed_chart_of_accounts)
 ASSET_ACCOUNTS = [
-    "Cash", "Accounts Receivable", "Supplies", "Prepaid Rent", "Equipment"
+    "Cash",
+    "Accounts Receivable",
+    "Input Tax",
+    "Office Equipment",
+    "Accumulated Depreciation",
 ]
 LIABILITY_ACCOUNTS = [
-    "Accounts Payable", "Utilities Payable", "Salaries Payable", "Unearned Revenue"
+    "Accounts Payable",
+    "Utilities Payable",
+    "Withholding Taxes Payable",
+    "SSS, PhilHealth, and Pag-Ibig Payable",
+    "Expanded Withholding Tax Payable",
+    "Accrued Percentage Tax Payable",
 ]
 EQUITY_ACCOUNTS = [
-    "Owner's Capital", "Owner's Drawings"
+    "Owner's Capital",
+    "Owner's Drawings",
 ]
 REVENUE_ACCOUNTS = [
-    "Service Revenue", "Sales Revenue"
+    "Service Income",
 ]
 EXPENSE_ACCOUNTS = [
-    "Rent Expense", "Salaries Expense", "Supplies Expense", 
-    "Depreciation Expense", "Utilities Expense", "Cost of Goods Sold"
+    "Salaries & Wages",
+    "Rent Expense",
+    "Utilities Expense",
+    "Supplies Expense",
+    "PhilHealth, Pag-Ibig and SSS Contributions",
+    "Depreciation Expense",
+    "Transportation Expense",
+    "Percentage Tax Expense",
 ]
 
-ALL_ACCOUNTS = ASSET_ACCOUNTS + LIABILITY_ACCOUNTS + EQUITY_ACCOUNTS + REVENUE_ACCOUNTS + EXPENSE_ACCOUNTS
+# Temporary / closing accounts that exist in the chart of accounts but should not
+# normally be picked as day-to-day expense accounts in mock operational data.
+TEMPORARY_ACCOUNTS = [
+    "Income Summary",
+]
+
+ALL_ACCOUNTS = (
+    ASSET_ACCOUNTS
+    + LIABILITY_ACCOUNTS
+    + EQUITY_ACCOUNTS
+    + REVENUE_ACCOUNTS
+    + EXPENSE_ACCOUNTS
+    + TEMPORARY_ACCOUNTS
+)
 
 SOURCE_TYPES = ["Invoice", "Receipt", "Bank", "Adjust", "Payroll", "Other"]
 
@@ -470,7 +499,8 @@ class MockDataGenerator:
                     debit_acct = random.choice(EXPENSE_ACCOUNTS)
                     credit_acct = "Cash"
             elif source_type == "Payroll":
-                debit_acct = "Salaries Expense"
+                # Match the chart of accounts seeded in techfix.db.seed_chart_of_accounts
+                debit_acct = "Salaries & Wages"
                 credit_acct = "Cash"
             else:
                 debit_acct = random.choice(ALL_ACCOUNTS)
@@ -685,7 +715,8 @@ class MockDataGenerator:
                     credit_acct = "Cash"
                 doc_ref = f"BANK-{doc_no}"
             elif source_type == "Payroll":
-                debit_acct = "Salaries Expense"
+                # Match the chart of accounts seeded in techfix.db.seed_chart_of_accounts
+                debit_acct = "Salaries & Wages"
                 credit_acct = "Cash"
                 doc_ref = f"PAY-{doc_no}"
             elif source_type == "Adjust":

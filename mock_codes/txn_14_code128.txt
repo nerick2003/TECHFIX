@@ -1,1 +1,0 @@
-{"date":"2025-12-20","source_type":"Bank","document_ref":"89921","external_ref":"BAN-89921","description":"Bank deposit","debit_amount":3111.01,"credit_amount":3111.01,"memo":"Transaction 14"}

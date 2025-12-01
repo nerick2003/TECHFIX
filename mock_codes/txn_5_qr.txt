@@ -1,1 +1,0 @@
-{"date":"2025-12-29","source_type":"Invoice","document_ref":"23283","external_ref":"INV-23283","description":"Professional fees","debit_amount":2304.44,"credit_amount":2304.44,"memo":"Transaction 5"}

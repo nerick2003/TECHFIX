@@ -1,1 +1,0 @@
-{"date":"2025-12-15","source_type":"Bank","document_ref":"29106","external_ref":"BAN-29106","description":"Bank withdrawal","debit_amount":4178.98,"credit_amount":4178.98,"memo":"Transaction 12"}

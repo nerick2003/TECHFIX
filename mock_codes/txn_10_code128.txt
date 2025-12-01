@@ -1,1 +1,0 @@
-{"date":"2025-12-07","source_type":"Invoice","document_ref":"54552","external_ref":"INV-54552","description":"Client services - December","debit_amount":1484.59,"credit_amount":1484.59,"memo":"Transaction 10"}

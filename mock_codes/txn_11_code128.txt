@@ -1,1 +1,0 @@
-{"date":"2025-12-07","source_type":"Adjust","document_ref":"58350","external_ref":"ADJ-58350","description":"Prepaid adjustment","debit_amount":4243.28,"credit_amount":4243.28,"memo":"Transaction 11"}
