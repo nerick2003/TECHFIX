@@ -45,6 +45,54 @@ def init_db(reset: bool = False) -> None:
         conn.close()
 
 
+def get_or_create_default_user(conn: sqlite3.Connection) -> sqlite3.Row:
+    """
+    Ensure there is at least one application user and return it.
+
+    For now we use a simple single-user model with username 'default'.
+    """
+    cur = conn.execute("SELECT * FROM users WHERE username = ?", ("default",))
+    row = cur.fetchone()
+    if row:
+        return row
+    conn.execute(
+        "INSERT INTO users (username, full_name, is_active) VALUES (?,?,1)",
+        ("default", "Default User"),
+    )
+    conn.commit()
+    return conn.execute("SELECT * FROM users WHERE username = ?", ("default",)).fetchone()
+
+
+def get_user_preferences(user_id: int, conn: sqlite3.Connection) -> Dict[str, Any]:
+    cur = conn.execute(
+        "SELECT key, value FROM user_preferences WHERE user_id = ?",
+        (user_id,),
+    )
+    prefs: Dict[str, Any] = {}
+    for row in cur.fetchall():
+        key = row["key"]
+        val_raw = row["value"]
+        try:
+            val = json.loads(val_raw)
+        except Exception:
+            val = val_raw
+        prefs[key] = val
+    return prefs
+
+
+def set_user_preference(user_id: int, key: str, value: Any, conn: sqlite3.Connection) -> None:
+    payload = json.dumps(value)
+    conn.execute(
+        """
+        INSERT INTO user_preferences (user_id, key, value)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value
+        """,
+        (user_id, key, payload),
+    )
+    conn.commit()
+
+
 def _create_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -56,6 +104,109 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             normal_side TEXT NOT NULL,            -- Debit or Credit
             is_active INTEGER NOT NULL DEFAULT 1,
             is_permanent INTEGER NOT NULL DEFAULT 1
+        );
+
+        -- Basic subledgers: customers, vendors, AR/AP documents
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL UNIQUE,
+            contact TEXT,
+            email TEXT,
+            phone TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS vendors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL UNIQUE,
+            contact TEXT,
+            email TEXT,
+            phone TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS sales_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL REFERENCES customers(id),
+            entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+            invoice_no TEXT,
+            date TEXT NOT NULL,
+            due_date TEXT,
+            total_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+        );
+
+        CREATE TABLE IF NOT EXISTS purchase_bills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+            entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+            bill_no TEXT,
+            date TEXT NOT NULL,
+            due_date TEXT,
+            total_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+        );
+
+        -- Simple inventory and fixed asset scaffolding
+        CREATE TABLE IF NOT EXISTS inventory_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sku TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            unit TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS inventory_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+            entry_id INTEGER REFERENCES journal_entries(id) ON DELETE SET NULL,
+            date TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            memo TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS fixed_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            asset_code TEXT NOT NULL UNIQUE,
+            acquisition_date TEXT,
+            cost REAL NOT NULL DEFAULT 0,
+            useful_life_months INTEGER,
+            salvage_value REAL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+
+        -- Multi-entity and security model (companies, users, roles)
+        CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            code TEXT NOT NULL UNIQUE,
+            base_currency TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            full_name TEXT,
+            role_id INTEGER REFERENCES roles(id),
+            company_id INTEGER REFERENCES companies(id),
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(user_id, key)
         );
 
         CREATE TABLE IF NOT EXISTS journal_entries (
@@ -74,7 +225,12 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             posted_at TEXT,
             created_by TEXT DEFAULT 'system',
-            posted_by TEXT
+            posted_by TEXT,
+            company_id INTEGER REFERENCES companies(id),
+            created_by_user_id INTEGER REFERENCES users(id),
+            posted_by_user_id INTEGER REFERENCES users(id),
+            currency_code TEXT,
+            fx_rate REAL
         );
 
         CREATE TABLE IF NOT EXISTS journal_lines (
@@ -170,6 +326,7 @@ def _create_schema(conn: sqlite3.Connection) -> None:
 
 
 def _apply_schema_updates(conn: sqlite3.Connection) -> None:
+    # Core journal / periods / cycle tables and columns
     _ensure_column(conn, "journal_entries", "document_ref TEXT")
     _ensure_column(conn, "journal_entries", "external_ref TEXT")
     _ensure_column(conn, "journal_entries", "memo TEXT")
@@ -180,6 +337,194 @@ def _apply_schema_updates(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "journal_entries", "posted_at TEXT")
     _ensure_column(conn, "journal_entries", "created_by TEXT DEFAULT 'system'")
     _ensure_column(conn, "journal_entries", "posted_by TEXT")
+
+    # Multi-entity and security model
+    _ensure_table(
+        conn,
+        "companies",
+        """
+        CREATE TABLE companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            code TEXT NOT NULL UNIQUE
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "roles",
+        """
+        CREATE TABLE roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "users",
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            full_name TEXT,
+            role_id INTEGER REFERENCES roles(id),
+            company_id INTEGER REFERENCES companies(id),
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "user_preferences",
+        """
+        CREATE TABLE user_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(user_id, key)
+        )
+        """,
+    )
+
+    # Currencies and tax codes (multi-currency & tax scaffolding)
+    _ensure_table(
+        conn,
+        "currencies",
+        """
+        CREATE TABLE currencies (
+            code TEXT PRIMARY KEY,
+            name TEXT,
+            symbol TEXT
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "tax_codes",
+        """
+        CREATE TABLE tax_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            rate REAL NOT NULL,              -- e.g. 0.12 for 12%
+            account_id INTEGER,              -- optional link to a tax account
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+    )
+    _ensure_column(conn, "companies", "base_currency TEXT")
+    _ensure_column(conn, "journal_entries", "currency_code TEXT")
+    _ensure_column(conn, "journal_entries", "fx_rate REAL")
+
+    # Subledger tables (customers, vendors, AR/AP, inventory, fixed assets)
+    _ensure_table(
+        conn,
+        "customers",
+        """
+        CREATE TABLE customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL UNIQUE,
+            contact TEXT,
+            email TEXT,
+            phone TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "vendors",
+        """
+        CREATE TABLE vendors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL UNIQUE,
+            contact TEXT,
+            email TEXT,
+            phone TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "sales_invoices",
+        """
+        CREATE TABLE sales_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL REFERENCES customers(id),
+            entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+            invoice_no TEXT,
+            date TEXT NOT NULL,
+            due_date TEXT,
+            total_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "purchase_bills",
+        """
+        CREATE TABLE purchase_bills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+            entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+            bill_no TEXT,
+            date TEXT NOT NULL,
+            due_date TEXT,
+            total_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "inventory_items",
+        """
+        CREATE TABLE inventory_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sku TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            unit TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "inventory_movements",
+        """
+        CREATE TABLE inventory_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+            entry_id INTEGER REFERENCES journal_entries(id) ON DELETE SET NULL,
+            date TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            memo TEXT
+        )
+        """,
+    )
+    _ensure_table(
+        conn,
+        "fixed_assets",
+        """
+        CREATE TABLE fixed_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            asset_code TEXT NOT NULL UNIQUE,
+            acquisition_date TEXT,
+            cost REAL NOT NULL DEFAULT 0,
+            useful_life_months INTEGER,
+            salvage_value REAL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
 
     _ensure_table(
         conn,
@@ -367,6 +712,358 @@ def _apply_schema_updates(conn: sqlite3.Connection) -> None:
         conn.execute("INSERT INTO schema_versions(version) VALUES (?)", (SCHEMA_VERSION,))
 
 
+# --- Simple helpers for users / roles / companies --------------------------
+
+def ensure_default_role_and_user(*, conn: Optional[sqlite3.Connection] = None) -> None:
+    """
+    Ensure there is at least one basic role and user.
+    This keeps the security model minimal but ready for future GUI use.
+    """
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        # Default role
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO roles(name, description)
+            VALUES ('Admin', 'Full access to all features')
+            """
+        )
+        # Default company (already seeded in seed_chart_of_accounts, but safe here too)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO companies(name, code, base_currency)
+            VALUES ('Default Company', 'DEFAULT', 'PHP')
+            """
+        )
+        # Default admin user
+        cur = conn.execute("SELECT id FROM companies WHERE code='DEFAULT'")
+        row = cur.fetchone()
+        company_id = int(row["id"]) if row else None
+        cur = conn.execute("SELECT id FROM roles WHERE name='Admin'")
+        role_row = cur.fetchone()
+        role_id = int(role_row["id"]) if role_row else None
+        if company_id and role_id:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO users(username, full_name, role_id, company_id, is_active)
+                VALUES ('admin', 'Administrator', ?, ?, 1)
+                """,
+                (role_id, company_id),
+            )
+        conn.commit()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def get_user_by_username(username: str, *, conn: Optional[sqlite3.Connection] = None) -> Optional[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute("SELECT * FROM users WHERE username=?", (username,))
+        return cur.fetchone()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def get_company_by_code(code: str, *, conn: Optional[sqlite3.Connection] = None) -> Optional[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute("SELECT * FROM companies WHERE code=?", (code,))
+        return cur.fetchone()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def create_currency(
+    code: str,
+    name: Optional[str] = None,
+    symbol: Optional[str] = None,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    """Insert or update a currency definition."""
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO currencies(code, name, symbol)
+            VALUES (?, ?, ?)
+            ON CONFLICT(code) DO UPDATE SET name=excluded.name, symbol=excluded.symbol
+            """,
+            (code, name, symbol),
+        )
+        conn.commit()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def list_currencies(*, conn: Optional[sqlite3.Connection] = None) -> List[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute("SELECT code, name, symbol FROM currencies ORDER BY code")
+        return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def create_tax_code(
+    code: str,
+    name: str,
+    rate: float,
+    *,
+    account_id: Optional[int] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    """Create or update a tax code (e.g. VAT 12%)."""
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO tax_codes(code, name, rate, account_id, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(code) DO UPDATE SET name=excluded.name, rate=excluded.rate, account_id=excluded.account_id
+            """,
+            (code, name, float(rate), account_id),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+
+def list_tax_codes(*, conn: Optional[sqlite3.Connection] = None) -> List[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, code, name, rate, account_id, is_active FROM tax_codes ORDER BY code"
+        )
+        return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def get_tax_code_by_code(
+    code: str,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> Optional[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, code, name, rate, account_id, is_active FROM tax_codes WHERE code=?",
+            (code,),
+        )
+        return cur.fetchone()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def get_accounting_period_by_id(period_id: int, *, conn: Optional[sqlite3.Connection] = None) -> Optional[sqlite3.Row]:
+    """Fetch a single accounting period row by id."""
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT * FROM accounting_periods WHERE id=?",
+            (period_id,),
+        )
+        return cur.fetchone()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def set_period_closed(
+    period_id: int,
+    is_closed: bool = True,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    """
+    Mark an accounting period as closed or open.
+    Does not change current_step; meant to be an explicit admin action.
+    """
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE accounting_periods SET is_closed=? WHERE id=?",
+            (1 if is_closed else 0, period_id),
+        )
+        conn.commit()
+    finally:
+        if not owned:
+            conn.close()
+
+
+# --- Simple AR/AP, inventory, and fixed asset helpers ----------------------
+
+def create_customer(
+    name: str,
+    code: str,
+    *,
+    contact: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO customers(name, code, contact, email, phone, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (name, code, contact, email, phone),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+
+def list_customers(*, conn: Optional[sqlite3.Connection] = None) -> List[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, name, code, contact, email, phone, is_active FROM customers ORDER BY name"
+        )
+        return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def create_vendor(
+    name: str,
+    code: str,
+    *,
+    contact: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO vendors(name, code, contact, email, phone, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (name, code, contact, email, phone),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+
+def list_vendors(*, conn: Optional[sqlite3.Connection] = None) -> List[sqlite3.Row]:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, name, code, contact, email, phone, is_active FROM vendors ORDER BY name"
+        )
+        return cur.fetchall()
+    finally:
+        if not owned:
+            conn.close()
+
+
+def create_sales_invoice(
+    customer_id: int,
+    entry_id: int,
+    date: str,
+    total_amount: float,
+    *,
+    invoice_no: Optional[str] = None,
+    due_date: Optional[str] = None,
+    status: str = "open",
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO sales_invoices(customer_id, entry_id, invoice_no, date, due_date, total_amount, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer_id, entry_id, invoice_no, date, due_date, float(total_amount), status),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+
+def create_purchase_bill(
+    vendor_id: int,
+    entry_id: int,
+    date: str,
+    total_amount: float,
+    *,
+    bill_no: Optional[str] = None,
+    due_date: Optional[str] = None,
+    status: str = "open",
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO purchase_bills(vendor_id, entry_id, bill_no, date, due_date, total_amount, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (vendor_id, entry_id, bill_no, date, due_date, float(total_amount), status),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        if not owned:
+            conn.close()
+
+
+
 def _ensure_column(conn: sqlite3.Connection, table: str, column_def: str) -> None:
     try:
         col_name = column_def.split()[0]
@@ -393,6 +1090,14 @@ def seed_chart_of_accounts(conn: Optional[sqlite3.Connection] = None) -> None:
     if not conn:
         conn = get_connection()
     try:
+        # Ensure a default company exists (single-entity by default)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO companies(name, code, base_currency)
+            VALUES ('Default Company', 'DEFAULT', 'PHP')
+            """
+        )
+
         # Seed using the reference Chart of Accounts (codes, titles, groups)
         # This drives the debit/credit account dropdowns throughout the app.
         accounts = [
@@ -402,6 +1107,7 @@ def seed_chart_of_accounts(conn: Optional[sqlite3.Connection] = None) -> None:
             ("103", "Input Tax", "Asset", "Debit", 1),
             ("104", "Office Equipment", "Asset", "Debit", 1),
             ("105", "Accumulated Depreciation", "Contra Asset", "Credit", 1),
+            ("124", "Supplies", "Asset", "Debit", 1),
 
             ("201", "Accounts Payable", "Liability", "Credit", 1),
             ("202", "Utilities Payable", "Liability", "Credit", 1),
@@ -413,7 +1119,7 @@ def seed_chart_of_accounts(conn: Optional[sqlite3.Connection] = None) -> None:
             ("301", "Owner's Capital", "Equity", "Credit", 1),
             ("302", "Owner's Drawings", "Equity", "Debit", 1),
 
-            ("401", "Service Income", "Revenue", "Credit", 0),
+            ("401", "Service Revenue", "Revenue", "Credit", 0),
 
             ("402", "Salaries & Wages", "Expense", "Debit", 0),
             ("403", "Rent Expense", "Expense", "Debit", 0),
@@ -459,6 +1165,9 @@ def insert_journal_entry(
     status: str = "posted",
     created_by: str = "system",
     posted_by: Optional[str] = None,
+    company_id: Optional[int] = None,
+    created_by_user_id: Optional[int] = None,
+    posted_by_user_id: Optional[int] = None,
     conn: Optional[sqlite3.Connection] = None,
 ) -> int:
     """
@@ -480,8 +1189,10 @@ def insert_journal_entry(
             period_id = period["id"] if period else None
 
         posted_at = datetime.now(timezone.utc).isoformat(timespec="seconds") if status == "posted" else None
-        if status != "posted" and posted_by:
+        if status != "posted":
+            # Only posted entries can have a posted_by / posted_by_user_id
             posted_by = None
+            posted_by_user_id = None
 
         cur = conn.cursor()
         cur.execute(
@@ -500,9 +1211,12 @@ def insert_journal_entry(
                 status,
                 created_by,
                 posted_at,
-                posted_by
+                posted_by,
+                company_id,
+                created_by_user_id,
+                posted_by_user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 date,
@@ -519,6 +1233,9 @@ def insert_journal_entry(
                 created_by,
                 posted_at,
                 posted_by,
+                company_id,
+                created_by_user_id,
+                posted_by_user_id,
             ),
         )
         entry_id = cur.lastrowid

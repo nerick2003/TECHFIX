@@ -12,6 +12,7 @@ import json
 import sys
 import subprocess
 import platform
+import logging
 try:
     import winreg
 except Exception:
@@ -31,6 +32,7 @@ except Exception:
     from techfix.accounting import AccountingEngine, JournalLine  # type: ignore
 
 
+logger = logging.getLogger(__name__)
 
 THEMES = {
     "Light": {
@@ -69,6 +71,7 @@ THEMES = {
     },
 }
 
+# Core typography for the entire app
 FONT_BASE = "{Segoe UI} 10"
 FONT_BOLD = "{Segoe UI Semibold} 11"
 FONT_TAB = "{Segoe UI Semibold} 10"
@@ -86,6 +89,14 @@ class TechFixApp(tk.Tk):
         # Make the root window expandable
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
+
+        # Centralize unexpected Tk callback errors into the Python logger so that
+        # hard‑to‑reproduce UI issues are easier to diagnose.
+        try:
+            self.report_callback_exception = self._report_callback_exception  # type: ignore[attr-defined]
+        except Exception:
+            # If Tk refuses the override for any reason, continue without crashing.
+            logger.debug("Unable to hook Tk report_callback_exception", exc_info=True)
         # Start in a large centered window (easier for modern UI)
         self.update_idletasks()
         width, height = 1200, 800
@@ -455,6 +466,7 @@ class TechFixApp(tk.Tk):
             background=colors["surface_bg"],
             fieldbackground=colors["surface_bg"],
             foreground=colors["text_primary"],
+            font=FONT_BASE,
             rowheight=26,
             borderwidth=0,
         )
@@ -463,6 +475,18 @@ class TechFixApp(tk.Tk):
             background=colors["tree_heading_bg"],
             foreground=colors["text_primary"],
             font=FONT_BOLD,
+        )
+        # Ensure header hover/active states stay consistent in both light and dark themes
+        self.style.map(
+            "Techfix.Treeview.Heading",
+            background=[
+                ("active", colors["tree_heading_bg"]),
+                ("pressed", colors["tree_heading_bg"]),
+            ],
+            foreground=[
+                ("active", colors["text_primary"]),
+                ("pressed", colors["text_primary"]),
+            ],
         )
         self.style.map(
             "Techfix.Treeview",
@@ -534,7 +558,8 @@ class TechFixApp(tk.Tk):
                             w.tag_configure('header', foreground=colors.get('accent_color', '#2563eb'))
                             w.tag_configure('subheader', foreground=colors.get('text_secondary', '#4b5563'))
                             w.tag_configure('section', foreground=colors.get('text_primary', '#1f2937'))
-                            w.tag_configure('total', foreground=colors.get('text_primary', '#1f2937'))
+                            # Ensure totals in text widgets are bold and clearly visible
+                            w.tag_configure('total', foreground=colors.get('text_primary', '#1f2937'), font=("Segoe UI", 10, "bold"))
                             w.tag_configure('net', foreground=colors.get('accent_color', '#2563eb'))
                             w.tag_configure('warning', foreground='red')
                         except Exception:
@@ -579,9 +604,19 @@ class TechFixApp(tk.Tk):
                     if isinstance(obj, ttk.Treeview):
                         try:
                             # Configure a generic 'row' tag with proper colors
-                            obj.tag_configure('row', background=colors.get('surface_bg', '#ffffff'), foreground=colors.get('text_primary', '#000000'))
-                            # Ensure totals rows reflect current theme
-                            obj.tag_configure('totals', background=colors.get('tab_selected_bg', '#e0ecff'), foreground=colors.get('text_primary', '#000000'))
+                            obj.tag_configure(
+                                'row',
+                                background=colors.get('surface_bg', '#ffffff'),
+                                foreground=colors.get('text_primary', '#000000'),
+                                font=FONT_BASE,
+                            )
+                            # Ensure totals rows reflect current theme and stand out in bold
+                            obj.tag_configure(
+                                'totals',
+                                background=colors.get('tab_selected_bg', '#e0ecff'),
+                                foreground=colors.get('text_primary', '#000000'),
+                                font=FONT_BOLD,
+                            )
                             # Retag existing rows so the tag applies immediately
                             for iid in obj.get_children():
                                 tags = tuple(obj.item(iid, 'tags') or ())
@@ -1047,6 +1082,48 @@ class TechFixApp(tk.Tk):
             if hasattr(self, 'status_var'):
                 self.status_var.set(str(text))
         except Exception:
+            pass
+
+    # --- Centralized error / logging helpers ---------------------------------
+
+    def _handle_exception(self, context: str, exc: BaseException) -> None:
+        """
+        Log an exception with context and surface a short message in the status bar.
+
+        Call this in addition to any user‑facing messagebox for operations where
+        we want better diagnostics without changing existing UX.
+        """
+        try:
+            logger.exception("TechFixApp error in %s", context, exc_info=exc)
+        except Exception:
+            # Never allow logging failures to propagate into the UI.
+            pass
+        try:
+            self.set_status(f"{context}: {exc}")
+        except Exception:
+            pass
+
+    def _report_callback_exception(self, exc_type, exc_value, exc_traceback) -> None:  # type: ignore[override]
+        """
+        Tkinter hook: called for exceptions raised in event callbacks.
+        Route these through the logger and show a generic dialog so the app
+        doesn't silently swallow errors.
+        """
+        try:
+            logger.error(
+                "Unhandled Tk callback exception",
+                exc_info=(exc_type, exc_value, exc_traceback),
+            )
+        except Exception:
+            pass
+        try:
+            messagebox.showerror(
+                "Unexpected Error",
+                "An unexpected error occurred in the UI.\n\n"
+                "Details have been logged; please check the log output for more information.",
+            )
+        except Exception:
+            # As a last resort, ignore if even messagebox fails.
             pass
 
     def _on_period_change(self, event=None):
@@ -1670,6 +1747,16 @@ class TechFixApp(tk.Tk):
         exit_wrap = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
         exit_wrap.pack(side=tk.BOTTOM, fill=tk.X, padx=6, pady=(12, 6))
         ttk.Button(exit_wrap, text="Exit", command=self._on_close, style="Techfix.Danger.TButton").pack(fill=tk.X)
+
+        # Global keyboard shortcuts for navigation between major tabs
+        try:
+            # Ctrl+1..Ctrl+0 jump between sidebar tabs (Transactions through Help)
+            for idx in range(len(self._tab_frames)):
+                digit = (idx + 1) % 10  # 1-9,0
+                seq = f"<Control-Key-{digit}>"
+                self.bind(seq, lambda e, i=idx: self._nav_to(i))
+        except Exception:
+            pass
 
     def _build_menubar(self) -> None:
         self.menubar = tk.Menu(self)
@@ -3493,6 +3580,16 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
 
+        # Keyboard shortcuts in the Transactions tab
+        try:
+            # Ctrl+Enter posts, Ctrl+Shift+Enter saves draft (when focus is within txn form)
+            form.bind_all("<Control-Return>", lambda e: self._record_transaction("posted"))
+            form.bind_all("<Control-KP_Enter>", lambda e: self._record_transaction("posted"))
+            form.bind_all("<Control-Shift-Return>", lambda e: self._record_transaction("draft"))
+            form.bind_all("<Control-Shift-KP_Enter>", lambda e: self._record_transaction("draft"))
+        except Exception:
+            pass
+
     def _delete_selected_transaction(self) -> None:
         try:
             if not hasattr(self, 'txn_recent_tree'):
@@ -3947,53 +4044,78 @@ class TechFixApp(tk.Tk):
             messagebox.showerror("Error", f"Failed to update adjustment(s): {e}")
 
     def _build_journal_tab(self) -> None:
-        """Build the journal entries tab with a list of all journal entries"""
+        """Build the journal entries tab with a list of all journal entries."""
         frame = self.tab_journal
-        
+
         # Create a frame for the toolbar
         toolbar = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         toolbar.pack(fill=tk.X, padx=4, pady=4)
-        
+
         # Add refresh button
-        ttk.Button(
+        refresh_btn = ttk.Button(
             toolbar,
             text="Refresh",
             command=self._load_journal_entries,
-            style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=2)
+            style="Techfix.TButton",
+        )
+        refresh_btn.pack(side=tk.LEFT, padx=2)
         # Export to Excel button for journal
-        ttk.Button(
+        export_btn = ttk.Button(
             toolbar,
             text="Export to Excel",
-            command=lambda: self._export_tree_to_excel(self.journal_tree, default_name=f"journal_{self.fs_date_to.get() if hasattr(self, 'fs_date_to') else ''}.xlsx"),
-            style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=2)
-        
+            command=lambda: self._export_tree_to_excel(
+                self.journal_tree,
+                default_name=f"journal_{self.fs_date_to.get() if hasattr(self, 'fs_date_to') else ''}.xlsx",
+            ),
+            style="Techfix.TButton",
+        )
+        export_btn.pack(side=tk.LEFT, padx=2)
+
+        # Simple paging controls
+        paging_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
+        paging_frame.pack(side=tk.LEFT, padx=6)
+        self.journal_page_label = ttk.Label(paging_frame, text="Page 1", style="Techfix.TLabel")
+        self.journal_page_label.pack(side=tk.LEFT, padx=(0, 4))
+        prev_btn = ttk.Button(
+            paging_frame,
+            text="◀ Prev",
+            style="Techfix.TButton",
+            command=lambda: self._change_journal_page(-1),
+        )
+        next_btn = ttk.Button(
+            paging_frame,
+            text="Next ▶",
+            style="Techfix.TButton",
+            command=lambda: self._change_journal_page(1),
+        )
+        prev_btn.pack(side=tk.LEFT, padx=2)
+        next_btn.pack(side=tk.LEFT, padx=2)
+
         # Add filter controls
         filter_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
         filter_frame.pack(side=tk.RIGHT, padx=4)
-        
+
         ttk.Label(filter_frame, text="Filter by:", style="Techfix.TLabel").pack(side=tk.LEFT, padx=4)
-        
+
         # Date range filter
         self.journal_date_from = ttk.Entry(filter_frame, width=10, style="Techfix.TEntry")
         self.journal_date_from.pack(side=tk.LEFT, padx=2)
         ttk.Label(filter_frame, text="to", style="Techfix.TLabel").pack(side=tk.LEFT)
         self.journal_date_to = ttk.Entry(filter_frame, width=10, style="Techfix.TEntry")
         self.journal_date_to.pack(side=tk.LEFT, padx=2)
-        
+
         # Account filter
         self.journal_account_filter = ttk.Combobox(
-            filter_frame, 
-            width=20, 
+            filter_frame,
+            width=20,
             state="readonly",
-            style="Techfix.TCombobox"
+            style="Techfix.TCombobox",
         )
         self.journal_account_filter.pack(side=tk.LEFT, padx=4)
         try:
             accs = db.get_accounts(conn=self.engine.conn)
             names = ["All"] + [f"{a['code']} - {a['name']}" for a in accs]
-            self.journal_account_filter['values'] = names
+            self.journal_account_filter["values"] = names
             try:
                 self.journal_account_filter.set("All")
             except Exception:
@@ -4001,7 +4123,7 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
         self.journal_account_filter.bind("<<ComboboxSelected>>", lambda e: self._load_journal_entries())
-        
+
         # Create the treeview for journal entries
         columns = ("date", "reference", "description", "debit", "credit", "account")
         self.journal_tree = ttk.Treeview(
@@ -4009,9 +4131,9 @@ class TechFixApp(tk.Tk):
             columns=columns,
             show="headings",
             selectmode="browse",
-            style="Techfix.Treeview"
+            style="Techfix.Treeview",
         )
-        
+
         # Configure columns
         self.journal_tree.heading("date", text="Date")
         self.journal_tree.heading("reference", text="Reference")
@@ -4019,7 +4141,7 @@ class TechFixApp(tk.Tk):
         self.journal_tree.heading("debit", text="Debit")
         self.journal_tree.heading("credit", text="Credit")
         self.journal_tree.heading("account", text="Account")
-        
+
         # Set column widths
         self.journal_tree.column("date", width=100, anchor=tk.W)
         self.journal_tree.column("reference", width=100, anchor=tk.W)
@@ -4027,24 +4149,33 @@ class TechFixApp(tk.Tk):
         self.journal_tree.column("debit", width=100, anchor=tk.E)
         self.journal_tree.column("credit", width=100, anchor=tk.E)
         self.journal_tree.column("account", width=200, anchor=tk.W)
-        
+
         # Add scrollbar
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.journal_tree.yview)
         self.journal_tree.configure(yscrollcommand=scrollbar.set)
-        
+
         # Pack the treeview and scrollbar
         self.journal_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=4)
-        
+
         # Bind double-click event
         self.journal_tree.bind("<Double-1>", self._on_journal_entry_double_click)
-        
+
         self._load_journal_entries()
 
     def _load_journal_entries(self):
-        for item in self.journal_tree.get_children():
-            self.journal_tree.delete(item)
         try:
+            # Basic in‑memory pagination: fetch a chunk and remember if there is more.
+            if not hasattr(self, "_journal_page"):
+                self._journal_page = 0
+            page_size = getattr(self, "_journal_page_size", 500)
+
+            # Always clear existing rows before loading a page so we don't duplicate content.
+            for item in self.journal_tree.get_children():
+                self.journal_tree.delete(item)
+
+            offset = self._journal_page * page_size
+
             rows = db.fetch_journal(period_id=self.engine.current_period_id, conn=self.engine.conn)
             # Optional account filtering from dropdown
             sel = ''
@@ -4092,6 +4223,12 @@ class TechFixApp(tk.Tk):
                         return False
                     return True
                 rows = [r for r in rows if _in_range(r['date'])]
+            # Apply offset/limit after filters
+            sliced = rows[offset : offset + page_size + 1]
+            has_more = len(sliced) > page_size
+            rows = sliced[:page_size]
+            setattr(self, "_journal_has_more", has_more)
+
             current_entry = None
             total_debit = 0.0
             total_credit = 0.0
@@ -4119,22 +4256,87 @@ class TechFixApp(tk.Tk):
                     total_credit += float(credit or 0)
                 except Exception:
                     pass
-                iid = f"je-{eid}-line-{r['line_id']}"
-                # Insert a header row (first line for an entry) with the date and description
+                # Insert a header row (first line for an entry) with the date and description.
+                # Let Tk generate item IDs automatically to avoid duplicate-iid errors when
+                # reloading or paging.
                 if current_entry != eid:
-                    self.journal_tree.insert('', 'end', iid=iid, values=(date, ref, desc, f"{debit:,.2f}" if debit else "", f"{credit:,.2f}" if credit else "", acct))
+                    self.journal_tree.insert(
+                        '',
+                        'end',
+                        values=(
+                            date,
+                            ref,
+                            desc,
+                            f"{debit:,.2f}" if debit else "",
+                            f"{credit:,.2f}" if credit else "",
+                            acct,
+                        ),
+                    )
                     current_entry = eid
                 else:
                     # Subsequent lines for the same entry should show blanks for date/description
-                    self.journal_tree.insert('', 'end', iid=iid, values=("", "", "", f"{debit:,.2f}" if debit else "", f"{credit:,.2f}" if credit else "", acct))
+                    self.journal_tree.insert(
+                        '',
+                        'end',
+                        values=(
+                            "",
+                            "",
+                            "",
+                            f"{debit:,.2f}" if debit else "",
+                            f"{credit:,.2f}" if credit else "",
+                            acct,
+                        ),
+                    )
             # Insert totals row
             try:
-                self.journal_tree.insert('', 'end', values=("", "", "Totals:", f"{total_debit:,.2f}", f"{total_credit:,.2f}", ""), tags=('totals',))
-                self.journal_tree.tag_configure('totals', background=self.palette.get('tab_selected_bg', '#e0ecff'))
+                self.journal_tree.insert(
+                    '',
+                    'end',
+                    values=("", "", "Totals:", f"{total_debit:,.2f}", f"{total_credit:,.2f}", ""),
+                    tags=('totals',),
+                )
+                # Make totals row visually distinct and bold
+                self.journal_tree.tag_configure(
+                    'totals',
+                    background=self.palette.get('tab_selected_bg', '#e0ecff'),
+                    foreground=self.palette.get('text_primary', '#000000'),
+                    font=FONT_BOLD,
+                )
+            except Exception:
+                pass
+            # Update page label if present
+            try:
+                if hasattr(self, "journal_page_label"):
+                    self.journal_page_label.config(text=f"Page {self._journal_page + 1}")
             except Exception:
                 pass
         except Exception as e:
+            try:
+                self._handle_exception("load_journal_entries", e)
+            except Exception:
+                pass
             messagebox.showerror("Error", f"Failed to load journal entries: {str(e)}")
+
+    def _change_journal_page(self, delta: int) -> None:
+        """Move forward/backward through journal pages and reload."""
+        try:
+            if not hasattr(self, "_journal_page"):
+                self._journal_page = 0
+            page_size = getattr(self, "_journal_page_size", 500)
+            if page_size <= 0:
+                page_size = 500
+            # Bound page index at 0 and don't advance past "no more data"
+            new_page = max(0, self._journal_page + int(delta))
+            if delta > 0 and not getattr(self, "_journal_has_more", False):
+                return
+            self._journal_page = new_page
+            # Do not clear existing in this call; _load_journal_entries handles it via _journal_reset
+            self._load_journal_entries()
+        except Exception as e:
+            try:
+                self._handle_exception("change_journal_page", e)
+            except Exception:
+                pass
 
     def _load_recent_transactions(self, limit: int = 50) -> None:
         """Populate the Recent Transactions tree with the most recent entries, including drafts without lines."""
@@ -4257,58 +4459,83 @@ class TechFixApp(tk.Tk):
         pass
 
     def _build_ledger_tab(self) -> None:
-        """Build the ledger tab with a list of all accounts and their balances"""
+        """Build the ledger tab with a list of all accounts and their balances."""
         frame = self.tab_ledger
-        
+
         # Create a frame for the toolbar
         toolbar = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         toolbar.pack(fill=tk.X, padx=4, pady=4)
-        
+
         # Add refresh button
-        ttk.Button(
+        refresh_btn = ttk.Button(
             toolbar,
             text="Refresh",
             command=self._load_ledger_entries,
-            style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=2)
+            style="Techfix.TButton",
+        )
+        refresh_btn.pack(side=tk.LEFT, padx=2)
         ttk.Button(
             toolbar,
             text="Post to Ledger",
             command=self._post_to_ledger_action,
-            style="Techfix.TButton"
+            style="Techfix.TButton",
         ).pack(side=tk.LEFT, padx=6)
         # Export ledger to Excel
-        ttk.Button(
+        export_btn = ttk.Button(
             toolbar,
             text="Export to Excel",
-            command=lambda: self._export_tree_to_excel(self.ledger_tree, default_name=f"ledger_{self.fs_date_to.get() if hasattr(self, 'fs_date_to') else ''}.xlsx"),
-            style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=6)
-        
+            command=lambda: self._export_tree_to_excel(
+                self.ledger_tree,
+                default_name=f"ledger_{self.fs_date_to.get() if hasattr(self, 'fs_date_to') else ''}.xlsx",
+            ),
+            style="Techfix.TButton",
+        )
+        export_btn.pack(side=tk.LEFT, padx=6)
+
+        # Simple paging controls
+        paging_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
+        paging_frame.pack(side=tk.LEFT, padx=6)
+        self.ledger_page_label = ttk.Label(paging_frame, text="Page 1", style="Techfix.TLabel")
+        self.ledger_page_label.pack(side=tk.LEFT, padx=(0, 4))
+        prev_btn = ttk.Button(
+            paging_frame,
+            text="◀ Prev",
+            style="Techfix.TButton",
+            command=lambda: self._change_ledger_page(-1),
+        )
+        next_btn = ttk.Button(
+            paging_frame,
+            text="Next ▶",
+            style="Techfix.TButton",
+            command=lambda: self._change_ledger_page(1),
+        )
+        prev_btn.pack(side=tk.LEFT, padx=2)
+        next_btn.pack(side=tk.LEFT, padx=2)
+
         # Add account filter
         filter_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
         filter_frame.pack(side=tk.RIGHT, padx=4)
-        
+
         ttk.Label(filter_frame, text="Account:", style="Techfix.TLabel").pack(side=tk.LEFT, padx=4)
         self.ledger_account_filter = ttk.Combobox(
             filter_frame,
             width=30,
             state="readonly",
-            style="Techfix.TCombobox"
+            style="Techfix.TCombobox",
         )
         self.ledger_account_filter.pack(side=tk.LEFT, padx=4)
         self.ledger_account_filter.bind("<<ComboboxSelected>>", lambda e: self._load_ledger_entries())
         try:
             accs = db.get_accounts(conn=self.engine.conn)
             names = ["All"] + [f"{a['code']} - {a['name']}" for a in accs]
-            self.ledger_account_filter['values'] = names
+            self.ledger_account_filter["values"] = names
             try:
                 self.ledger_account_filter.set("All")
             except Exception:
                 pass
         except Exception:
             pass
-        
+
         # Create the treeview for ledger entries
         columns = ("account", "debit", "credit", "balance")
         self.ledger_tree = ttk.Treeview(
@@ -4316,39 +4543,47 @@ class TechFixApp(tk.Tk):
             columns=columns,
             show="headings",
             selectmode="browse",
-            style="Techfix.Treeview"
+            style="Techfix.Treeview",
         )
-        
+
         # Configure columns
         self.ledger_tree.heading("account", text="Account", anchor=tk.W)
         self.ledger_tree.heading("debit", text="Debit", anchor=tk.E)
         self.ledger_tree.heading("credit", text="Credit", anchor=tk.E)
         self.ledger_tree.heading("balance", text="Balance", anchor=tk.E)
-        
+
         # Set column widths
         self.ledger_tree.column("account", width=300, anchor=tk.W)
         self.ledger_tree.column("debit", width=150, anchor=tk.E)
         self.ledger_tree.column("credit", width=150, anchor=tk.E)
         self.ledger_tree.column("balance", width=150, anchor=tk.E)
-        
+
         # Add scrollbar
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.ledger_tree.yview)
         self.ledger_tree.configure(yscrollcommand=scrollbar.set)
-        
+
         # Pack the treeview and scrollbar
         self.ledger_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=4)
-        
+
         # Bind double-click event
         self.ledger_tree.bind("<Double-1>", self._on_ledger_entry_double_click)
-        
+
         # Load initial data
         self._load_ledger_entries()
 
     def _load_ledger_entries(self):
-        for item in self.ledger_tree.get_children():
-            self.ledger_tree.delete(item)
         try:
+            if not hasattr(self, "_ledger_page"):
+                self._ledger_page = 0
+            page_size = getattr(self, "_ledger_page_size", 500)
+
+            # Always clear existing rows before loading a page so we don't duplicate content.
+            for item in self.ledger_tree.get_children():
+                self.ledger_tree.delete(item)
+
+            offset = self._ledger_page * page_size
+
             rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
             sel = ''
             try:
@@ -4366,6 +4601,12 @@ class TechFixApp(tk.Tk):
                 d, c = self._balance_to_columns(r)
                 return bool((d or 0) != 0 or (c or 0) != 0)
             rows = [r for r in rows if _has_activity(r)]
+
+            # Apply paging after filters
+            sliced = rows[offset : offset + page_size + 1]
+            has_more = len(sliced) > page_size
+            rows = sliced[:page_size]
+            setattr(self, "_ledger_has_more", has_more)
             total_debit = 0.0
             total_credit = 0.0
             for r in rows:
@@ -4389,12 +4630,57 @@ class TechFixApp(tk.Tk):
                 self.ledger_tree.insert('', 'end', values=(name, f"{d:,.2f}" if d else '', f"{c:,.2f}" if c else '', f"{bal:,.2f} {side}" if bal else ''))
             # Totals row
             try:
-                self.ledger_tree.insert('', 'end', values=("Totals", f"{total_debit:,.2f}" if total_debit else '', f"{total_credit:,.2f}" if total_credit else '', ""), tags=('totals',))
-                self.ledger_tree.tag_configure('totals', background=self.palette.get('tab_selected_bg', '#e0ecff'))
+                self.ledger_tree.insert(
+                    '',
+                    'end',
+                    values=(
+                        "Totals",
+                        f"{total_debit:,.2f}" if total_debit else '',
+                        f"{total_credit:,.2f}" if total_credit else '',
+                        "",
+                    ),
+                    tags=('totals',),
+                )
+                # Make totals row visually distinct and bold
+                self.ledger_tree.tag_configure(
+                    'totals',
+                    background=self.palette.get('tab_selected_bg', '#e0ecff'),
+                    foreground=self.palette.get('text_primary', '#000000'),
+                    font=FONT_BOLD,
+                )
+            except Exception:
+                pass
+            # Update page label if present
+            try:
+                if hasattr(self, "ledger_page_label"):
+                    self.ledger_page_label.config(text=f"Page {self._ledger_page + 1}")
             except Exception:
                 pass
         except Exception as e:
+            try:
+                self._handle_exception("load_ledger_entries", e)
+            except Exception:
+                pass
             messagebox.showerror("Error", f"Failed to load ledger entries: {str(e)}")
+
+    def _change_ledger_page(self, delta: int) -> None:
+        """Move forward/backward through ledger pages and reload."""
+        try:
+            if not hasattr(self, "_ledger_page"):
+                self._ledger_page = 0
+            page_size = getattr(self, "_ledger_page_size", 500)
+            if page_size <= 0:
+                page_size = 500
+            new_page = max(0, self._ledger_page + int(delta))
+            if delta > 0 and not getattr(self, "_ledger_has_more", False):
+                return
+            self._ledger_page = new_page
+            self._load_ledger_entries()
+        except Exception as e:
+            try:
+                self._handle_exception("change_ledger_page", e)
+            except Exception:
+                pass
 
     def _resolve_account_id(self, sel: str) -> Optional[int]:
         try:
@@ -5123,6 +5409,96 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
 
+    def _is_duplicate_transaction(
+        self,
+        *,
+        date: str,
+        desc: str,
+        debit_account_id: int,
+        credit_account_id: int,
+        debit_amt: float,
+        credit_amt: float,
+        doc_ref: str | None,
+        ext_ref: str | None,
+        status: str,
+    ) -> bool:
+        """
+        Best‑effort duplicate protection for the Transactions tab.
+
+        We treat an entry as a duplicate if there is already a journal entry in
+        the current period with the same:
+          - date
+          - description
+          - document_ref (if provided)
+          - external_ref (if provided)
+          - status (draft/posted)
+        and which has one debit line and one credit line matching the selected
+        accounts and amounts.
+        """
+        try:
+            conn = getattr(self.engine, "conn", None)
+            period_id = getattr(self.engine, "current_period_id", None)
+            if not conn:
+                return False
+
+            params: list[object] = [date, desc]
+            where_extra: list[str] = []
+
+            if doc_ref:
+                where_extra.append("je.document_ref = ?")
+                params.append(doc_ref)
+            else:
+                where_extra.append("je.document_ref IS NULL")
+
+            if ext_ref:
+                where_extra.append("je.external_ref = ?")
+                params.append(ext_ref)
+            else:
+                where_extra.append("je.external_ref IS NULL")
+
+            where_extra.append("je.status = ?")
+            params.append(status)
+
+            if period_id:
+                where_extra.append("je.period_id = ?")
+                params.append(int(period_id))
+
+            # Amounts and account ids (rounded for safety)
+            params.extend(
+                [
+                    float(round(debit_amt, 2)),
+                    int(debit_account_id),
+                    float(round(credit_amt, 2)),
+                    int(credit_account_id),
+                ]
+            )
+
+            where_clause = " AND ".join(where_extra)
+            sql = f"""
+                SELECT 1
+                FROM journal_entries je
+                JOIN journal_lines jl_deb
+                    ON jl_deb.entry_id = je.id
+                JOIN journal_lines jl_cred
+                    ON jl_cred.entry_id = je.id
+                WHERE
+                    je.date = ?
+                    AND je.description = ?
+                    AND {where_clause}
+                    AND jl_deb.debit = ?
+                    AND jl_deb.credit = 0
+                    AND jl_deb.account_id = ?
+                    AND jl_cred.credit = ?
+                    AND jl_cred.debit = 0
+                    AND jl_cred.account_id = ?
+                LIMIT 1
+            """
+            cur = conn.execute(sql, params)
+            return bool(cur.fetchone())
+        except Exception:
+            # Never block posting due to a duplicate‑check failure
+            return False
+
     def _record_transaction(self, status: str) -> None:
         try:
             date = self.txn_date.get().strip() if hasattr(self, 'txn_date') else ''
@@ -5254,6 +5630,32 @@ class TechFixApp(tk.Tk):
             did = self._resolve_account_id(debit_acct)
             cid = self._resolve_account_id(credit_acct)
             lines = [JournalLine(account_id=did, debit=debit_amt), JournalLine(account_id=cid, credit=credit_amt)]
+            # Duplicate-entry protection: prevent accidentally posting the same
+            # transaction twice from the Transactions tab.
+            if did and cid:
+                try:
+                    if self._is_duplicate_transaction(
+                        date=date,
+                        desc=desc,
+                        debit_account_id=int(did),
+                        credit_account_id=int(cid),
+                        debit_amt=float(debit_amt),
+                        credit_amt=float(credit_amt),
+                        doc_ref=doc_ref or None,
+                        ext_ref=ext_ref or None,
+                        status=status,
+                    ):
+                        messagebox.showerror(
+                            "Duplicate Transaction",
+                            "This transaction appears to be a duplicate of one that is already "
+                            "recorded for this period (same date, description, reference, accounts, "
+                            "and amounts).\n\n"
+                            "The entry has NOT been recorded again.",
+                        )
+                        return
+                except Exception:
+                    # If duplicate check fails, continue with normal posting.
+                    pass
             entry_id = self.engine.record_entry(
                 date,
                 desc,
@@ -5276,25 +5678,249 @@ class TechFixApp(tk.Tk):
             self._refresh_after_post()
             self._clear_transaction_form()
         except Exception as e:
+            # Show the existing user‑facing message, but also log for diagnostics.
+            try:
+                self._handle_exception("record_transaction", e)
+            except Exception:
+                pass
             messagebox.showerror('Error', f'Failed to record transaction: {e}')
 
     def _on_ledger_entry_double_click(self, event):
-        """Handle double-click on a ledger entry"""
-        item = self.ledger_tree.selection()[0]
-        values = self.ledger_tree.item(item, 'values')
-        
-        if values:
-            account_name = values[0].split(' (')[0]  # Extract account name
-            self._view_account_details(account_name)
+        """Handle double-click on a ledger entry to show detailed activity for that account."""
+        try:
+            if not hasattr(self, "ledger_tree"):
+                return
+            sel = self.ledger_tree.selection()
+            if not sel:
+                return
+            item = sel[0]
+            values = self.ledger_tree.item(item, "values")
+            if not values:
+                return
+            raw_label = values[0]
+            # Ledger displays either "CODE - Name" or just "Name"
+            account_display = (raw_label or "").split(" (", 1)[0]
+            code = None
+            name = account_display
+            if " - " in account_display:
+                code, name = account_display.split(" - ", 1)
+            # Prefer lookup by code if available, otherwise by name.
+            acc = None
+            try:
+                if code:
+                    acc = db.get_account_by_code(code, conn=self.engine.conn)
+                if not acc:
+                    acc = db.get_account_by_name(name, self.engine.conn)
+            except Exception:
+                acc = None
+            if not acc:
+                messagebox.showwarning("Account Not Found", f"Could not resolve account: {account_display}")
+                return
+            self._view_account_details(acc)
+        except Exception as e:
+            try:
+                self._handle_exception("ledger_entry_double_click", e)
+            except Exception:
+                pass
 
-    def _view_account_details(self, account_name):
-        """Show detailed transactions for the selected account"""
-        # This method would show a detailed view of transactions for the selected account
-        messagebox.showinfo(
-            "Account Details",
-            f"Showing transactions for account: {account_name}\n\n"
-            "This would show a detailed transaction history for the selected account."
+    def _view_account_details(self, account_row):
+        """
+        Show detailed transactions for the selected account in a modal dialog.
+
+        account_row is expected to be a sqlite3.Row (or mapping) with at least
+        id, code, and name fields.
+        """
+        try:
+            acc_id = int(account_row["id"])
+            acc_code = str(account_row.get("code") if hasattr(account_row, "keys") else account_row["code"])
+            acc_name = str(account_row.get("name") if hasattr(account_row, "keys") else account_row["name"])
+        except Exception:
+            # Fallback: try basic dict-style access
+            try:
+                acc_id = int(account_row["id"])
+                acc_code = str(account_row["code"])
+                acc_name = str(account_row["name"])
+            except Exception as e:
+                try:
+                    self._handle_exception("view_account_details_resolve", e)
+                except Exception:
+                    pass
+                messagebox.showerror("Error", "Unable to resolve selected account details.")
+                return
+
+        # Build dialog
+        dlg = tk.Toplevel(self)
+        dlg.title(f"Account Details – {acc_code} {acc_name}")
+        try:
+            dlg.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+        except Exception:
+            pass
+        dlg.transient(self)
+        dlg.grab_set()
+
+        # Header
+        header = ttk.Frame(dlg, style="Techfix.Surface.TFrame")
+        header.pack(fill=tk.X, padx=12, pady=(10, 4))
+        ttk.Label(
+            header,
+            text=f"{acc_code} – {acc_name}",
+            style="Techfix.Headline.TLabel",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Date range + controls
+        controls = ttk.Frame(dlg, style="Techfix.Surface.TFrame")
+        controls.pack(fill=tk.X, padx=12, pady=4)
+
+        ttk.Label(controls, text="From (YYYY-MM-DD):", style="Techfix.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        from_entry = ttk.Entry(controls, width=12, style="Techfix.TEntry")
+        from_entry.pack(side=tk.LEFT, padx=(0, 8))
+
+        ttk.Label(controls, text="To (YYYY-MM-DD):", style="Techfix.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        to_entry = ttk.Entry(controls, width=12, style="Techfix.TEntry")
+        to_entry.pack(side=tk.LEFT, padx=(0, 8))
+
+        # Default to period bounds if available
+        try:
+            period = getattr(self.engine, "current_period", None)
+            if period and "start_date" in period.keys() and period["start_date"]:
+                from_entry.insert(0, period["start_date"])
+            if period and "end_date" in period.keys() and period["end_date"]:
+                to_entry.insert(0, period["end_date"])
+        except Exception:
+            pass
+
+        btn_frame = ttk.Frame(controls, style="Techfix.Surface.TFrame")
+        btn_frame.pack(side=tk.RIGHT)
+        refresh_btn = ttk.Button(
+            btn_frame,
+            text="🔄 Refresh",
+            style="Techfix.TButton",
         )
+        export_btn = ttk.Button(
+            btn_frame,
+            text="💾 Export to Excel",
+            style="Techfix.TButton",
+        )
+        close_btn = ttk.Button(
+            btn_frame,
+            text="Close",
+            command=dlg.destroy,
+            style="Techfix.TButton",
+        )
+        refresh_btn.pack(side=tk.LEFT, padx=4)
+        export_btn.pack(side=tk.LEFT, padx=4)
+        close_btn.pack(side=tk.LEFT, padx=4)
+
+        # Treeview for detailed transactions
+        body = ttk.Frame(dlg, style="Techfix.Surface.TFrame")
+        body.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+
+        columns = ("date", "entry_id", "description", "debit", "credit", "balance")
+        tree = ttk.Treeview(
+            body,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            style="Techfix.Treeview",
+        )
+        for col, text, anchor in [
+            ("date", "Date", tk.W),
+            ("entry_id", "Entry #", tk.W),
+            ("description", "Description", tk.W),
+            ("debit", "Debit", tk.E),
+            ("credit", "Credit", tk.E),
+            ("balance", "Running Balance", tk.E),
+        ]:
+            tree.heading(col, text=text, anchor=anchor)
+        tree.column("date", width=100, anchor=tk.W)
+        tree.column("entry_id", width=70, anchor=tk.W)
+        tree.column("description", width=260, anchor=tk.W)
+        tree.column("debit", width=100, anchor=tk.E)
+        tree.column("credit", width=100, anchor=tk.E)
+        tree.column("balance", width=140, anchor=tk.E)
+
+        vsb = ttk.Scrollbar(body, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Data loader
+        def load_rows() -> None:
+            for item in tree.get_children():
+                tree.delete(item)
+            try:
+                date_from = from_entry.get().strip() or None
+                date_to = to_entry.get().strip() or None
+                params = [acc_id]
+                where = ["jl.account_id = ?"]
+                if date_from:
+                    where.append("je.date >= ?")
+                    params.append(date_from)
+                if date_to:
+                    where.append("je.date <= ?")
+                    params.append(date_to)
+                where_sql = " AND ".join(where)
+                cur = self.engine.conn.execute(
+                    f"""
+                    SELECT
+                        je.id AS entry_id,
+                        je.date,
+                        je.description,
+                        jl.debit,
+                        jl.credit
+                    FROM journal_lines jl
+                    JOIN journal_entries je ON je.id = jl.entry_id
+                    WHERE {where_sql}
+                    ORDER BY je.date, je.id, jl.id
+                    """,
+                    params,
+                )
+                bal = 0.0
+                for row in cur.fetchall():
+                    d = float(row["debit"] or 0.0)
+                    c = float(row["credit"] or 0.0)
+                    bal += d - c
+                    tree.insert(
+                        "",
+                        "end",
+                        values=(
+                            row["date"],
+                            row["entry_id"],
+                            row["description"],
+                            f"{d:,.2f}" if d else "",
+                            f"{c:,.2f}" if c else "",
+                            f"{bal:,.2f}",
+                        ),
+                    )
+            except Exception as e:
+                try:
+                    self._handle_exception("view_account_details_load", e)
+                except Exception:
+                    pass
+                messagebox.showerror("Error", f"Failed to load account details: {e}")
+
+        # Wire buttons after definition so they can call load_rows
+        refresh_btn.configure(command=load_rows)
+
+        def do_export() -> None:
+            try:
+                default_name = f"account_{acc_code}_{acc_name}.xlsx".replace(" ", "_")
+                self._export_tree_to_excel(tree, default_name=default_name)
+            except Exception as e:
+                try:
+                    self._handle_exception("view_account_details_export", e)
+                except Exception:
+                    pass
+                messagebox.showerror("Error", f"Failed to export account details: {e}")
+
+        export_btn.configure(command=do_export)
+
+        # Initial load and focus
+        load_rows()
+        try:
+            dlg.focus_set()
+        except Exception:
+            pass
 
     def _build_fs_tab(self) -> None:
         frame = self.tab_fs
@@ -5307,11 +5933,12 @@ class TechFixApp(tk.Tk):
         date_frame = ttk.Frame(controls, style="Techfix.Surface.TFrame")
         date_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        ttk.Label(date_frame, text="From (YYYY-MM-DD):", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        # Use surface-style labels so text blends with the bar in all themes
+        ttk.Label(date_frame, text="From (YYYY-MM-DD):", style="Techfix.TLabel").pack(side=tk.LEFT, padx=(0, 4))
         self.fs_date_from = ttk.Entry(date_frame, width=12, style="Techfix.TEntry")
         self.fs_date_from.pack(side=tk.LEFT, padx=(0, 12))
         
-        ttk.Label(date_frame, text="To (YYYY-MM-DD):", style="Techfix.AppBar.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(date_frame, text="To (YYYY-MM-DD):", style="Techfix.TLabel").pack(side=tk.LEFT, padx=(0, 4))
         self.fs_date_to = ttk.Entry(date_frame, width=12, style="Techfix.TEntry")
         self.fs_date_to.pack(side=tk.LEFT)
         
@@ -5320,30 +5947,79 @@ class TechFixApp(tk.Tk):
         today = datetime.date.today().strftime("%Y-%m-%d")
         self.fs_date_to.insert(0, today)
         
-        # Action buttons
+        # Action buttons + presets
         btn_frame = ttk.Frame(controls, style="Techfix.Surface.TFrame")
         btn_frame.pack(side=tk.RIGHT)
+
+        # Preset selector (e.g. Last Month, YTD)
+        preset_var = tk.StringVar(value="Custom")
+        self.fs_preset_var = preset_var
+        preset_box = ttk.Combobox(
+            btn_frame,
+            textvariable=preset_var,
+            state="readonly",
+            width=14,
+            values=["Custom", "This Month", "Last Month", "Year to Date"],
+            style="Techfix.TCombobox",
+        )
+        preset_box.pack(side=tk.LEFT, padx=(0, 4))
+
+        def _apply_preset(name: str) -> None:
+            try:
+                import datetime as _dt
+                today = _dt.date.today()
+                if name == "This Month":
+                    start = today.replace(day=1)
+                    end = today
+                elif name == "Last Month":
+                    first_this = today.replace(day=1)
+                    last_month_end = first_this - _dt.timedelta(days=1)
+                    start = last_month_end.replace(day=1)
+                    end = last_month_end
+                elif name == "Year to Date":
+                    start = today.replace(month=1, day=1)
+                    end = today
+                else:
+                    return
+                self.fs_date_from.delete(0, tk.END)
+                self.fs_date_from.insert(0, start.isoformat())
+                self.fs_date_to.delete(0, tk.END)
+                self.fs_date_to.insert(0, end.isoformat())
+            except Exception as e:
+                try:
+                    self._handle_exception("fs_apply_preset", e)
+                except Exception:
+                    pass
+
+        def _on_preset_change(event=None) -> None:
+            name = preset_var.get()
+            _apply_preset(name)
+
+        preset_box.bind("<<ComboboxSelected>>", _on_preset_change)
         
-        ttk.Button(
+        run_btn = ttk.Button(
             btn_frame, 
-            text="🔁 Generate", 
+            text="📊 Run Report", 
             command=self._load_financials, 
             style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=4)
+        )
+        run_btn.pack(side=tk.LEFT, padx=4)
         
-        ttk.Button(
+        export_xls_btn = ttk.Button(
             btn_frame,
             text="💾 Export to Excel",
             command=self._export_fs,
             style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=4)
+        )
+        export_xls_btn.pack(side=tk.LEFT, padx=4)
         
-        ttk.Button(
+        export_txt_btn = ttk.Button(
             btn_frame,
             text="💾 Export to Text",
             command=self._export_financials,
             style="Techfix.TButton"
-        ).pack(side=tk.LEFT, padx=4)
+        )
+        export_txt_btn.pack(side=tk.LEFT, padx=4)
         
         # Create notebook for different financial statements
         self.fs_notebook = ttk.Notebook(frame, style="Techfix.TNotebook")
@@ -5367,6 +6043,17 @@ class TechFixApp(tk.Tk):
         
         # Create text widgets for each statement
         self._create_fs_text_widgets()
+
+        # Keyboard shortcuts for Financial Statements
+        try:
+            # F5 runs financials, Ctrl+E exports current statement to Excel, Ctrl+T exports to text
+            frame.bind_all("<F5>", lambda e: self._load_financials())
+            frame.bind_all("<Control-e>", lambda e: self._export_fs())
+            frame.bind_all("<Control-E>", lambda e: self._export_fs())
+            frame.bind_all("<Control-t>", lambda e: self._export_financials())
+            frame.bind_all("<Control-T>", lambda e: self._export_financials())
+        except Exception:
+            pass
 
     def _on_fs_tab_changed(self, event=None):
         try:
@@ -5911,7 +6598,15 @@ class TechFixApp(tk.Tk):
         calling engine methods that change cycle step statuses.
         """
         try:
+            # Use the same date-range logic as _load_financials so that
+            # "From" and "To" behave consistently across themes.
+            date_from = self.fs_date_from.get().strip() if hasattr(self, 'fs_date_from') else None
+            if date_from == "":
+                date_from = None
             date_to = as_of_date or (self.fs_date_to.get().strip() if hasattr(self, 'fs_date_to') else None)
+            if date_to == "":
+                date_to = None
+
             inc_temp_bs = True
             try:
                 statuses = self.engine.get_cycle_status()
@@ -5920,14 +6615,30 @@ class TechFixApp(tk.Tk):
                     inc_temp_bs = False
             except Exception:
                 pass
-            rows = db.compute_trial_balance(up_to_date=date_to, include_temporary=inc_temp_bs, period_id=self.engine.current_period_id, conn=self.engine.conn)
+
+            # Match _load_financials: income statement uses from+to, balance
+            # sheet uses up_to_date only.
+            rows_is = db.compute_trial_balance(
+                from_date=date_from,
+                up_to_date=date_to,
+                include_temporary=True,
+                period_id=self.engine.current_period_id,
+                conn=self.engine.conn,
+            )
+            rows_bs = db.compute_trial_balance(
+                up_to_date=date_to,
+                include_temporary=inc_temp_bs,
+                period_id=self.engine.current_period_id,
+                conn=self.engine.conn,
+            )
+
             # Re-generate text widgets only (these functions write to Text widgets)
             try:
-                self._generate_income_statement(rows, date_to)
+                self._generate_income_statement(rows_is, date_to)
             except Exception:
                 pass
             try:
-                self._generate_balance_sheet(rows, date_to)
+                self._generate_balance_sheet(rows_bs, date_to)
             except Exception:
                 pass
         except Exception:
@@ -6036,6 +6747,10 @@ class TechFixApp(tk.Tk):
                 )
             
         except Exception as e:
+            try:
+                self._handle_exception("load_financials", e)
+            except Exception:
+                pass
             messagebox.showerror("Error", f"Failed to generate financial statements: {str(e)}")
             # Don't mark as completed or change cycle status if caller disallowed status changes
             if mark_status:
@@ -7205,6 +7920,13 @@ class TechFixApp(tk.Tk):
         self._load_ledger_entries()
         self._load_trial_balances()
         self._load_postclosing_tb()
+        # Ensure financial statements reflect newly posted entries without
+        # requiring the user to re-open the app or manually hit Generate.
+        try:
+            self._load_financials(mark_status=False)
+        except Exception:
+            # Do not block other refresh actions if FS generation fails
+            pass
         self._load_cycle_status()
         self._load_adjustments()
         self._load_closing_preview()

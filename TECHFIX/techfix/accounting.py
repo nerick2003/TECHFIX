@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, date as _date
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from pathlib import Path
 import sqlite3
@@ -20,13 +20,42 @@ class JournalLine:
 
 
 class AccountingEngine:
-    def __init__(self, conn: Optional[sqlite3.Connection] = None) -> None:
+    def __init__(self, conn: Optional[sqlite3.Connection] = None, *, current_user: Optional[str] = None) -> None:
         self._owned = conn is not None
         self.conn = conn or db.get_connection()
+        # Simple current user / company context (Phase 1 security model)
+        self.current_user_name = current_user or "system"
+        # Ensure we have a concrete user row for preference lookups when needed.
+        try:
+            self.current_user_row = db.get_or_create_default_user(self.conn)
+        except Exception:
+            self.current_user_row = None
+        try:
+            db.ensure_default_role_and_user(conn=self.conn)
+        except Exception:
+            pass
+        # Default company and currency context (Phase 5 scaffolding)
+        try:
+            self.current_company = db.get_company_by_code("DEFAULT", conn=self.conn)
+            self.base_currency = (self.current_company["base_currency"] if self.current_company else None) or "PHP"
+        except Exception:
+            self.current_company = None
+            self.base_currency = "PHP"
         self.current_period = db.get_current_period(conn=self.conn)
         if not self.current_period:
             self.current_period = db.ensure_default_period(conn=self.conn)
         self._initialize_cycle_status()
+
+    def set_company_context(self, company_code: str) -> None:
+        """
+        Switch the active company context for subsequent operations.
+        This is scaffolding for future multi-entity support.
+        """
+        row = db.get_company_by_code(company_code, conn=self.conn)
+        if not row:
+            raise ValueError(f"Company with code '{company_code}' not found.")
+        self.current_company = row
+        self.base_currency = (row["base_currency"] or self.base_currency or "PHP")
 
     def close(self) -> None:
         if not self._owned:
@@ -55,6 +84,44 @@ class AccountingEngine:
     ) -> int:
         line_tuples = [ln.as_tuple() for ln in lines]
         period = period_id or self.current_period_id
+        # Core validation: ensure an active, open period and a date within bounds (if defined)
+        if not period:
+            raise RuntimeError("No active accounting period selected.")
+        try:
+            entry_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except Exception:
+            raise ValueError("Entry date must be in ISO format YYYY-MM-DD.")
+
+        period_row = db.get_accounting_period_by_id(int(period), conn=self.conn)
+        if period_row:
+            if int(period_row["is_closed"] or 0) == 1:
+                raise RuntimeError("Cannot post entries to a closed accounting period.")
+            start = period_row["start_date"]
+            end = period_row["end_date"]
+            if start:
+                try:
+                    start_d = _date.fromisoformat(start)
+                    if entry_date < start_d:
+                        raise RuntimeError("Entry date is before the period start date.")
+                except Exception:
+                    # If stored date is malformed, skip strict validation
+                    pass
+            if end:
+                try:
+                    end_d = _date.fromisoformat(end)
+                    if entry_date > end_d:
+                        raise RuntimeError("Entry date is after the period end date.")
+                except Exception:
+                    pass
+        # Resolve user / company context, but remain backward compatible
+        created_username = created_by or self.current_user_name or "system"
+        created_user = None
+        company = getattr(self, "current_company", None)
+        try:
+            created_user = db.get_user_by_username(created_username, conn=self.conn)
+        except Exception:
+            created_user = None
+
         entry_id = db.insert_journal_entry(
             date,
             description,
@@ -67,9 +134,12 @@ class AccountingEngine:
             memo=memo,
             source_type=source_type,
             status=status,
-            created_by=created_by,
+            created_by=created_username,
             posted_by=posted_by,
             period_id=period,
+            company_id=int(company["id"]) if company else None,
+            created_by_user_id=int(created_user["id"]) if created_user else None,
+            posted_by_user_id=None,
             conn=self.conn,
         )
         if attachments:
@@ -82,6 +152,130 @@ class AccountingEngine:
             is_adjusting=is_adjusting,
             is_closing=is_closing,
             status=status,
+        )
+        return entry_id
+
+    # --- High-level AR/AP helpers ---------------------------------------------------
+
+    def create_customer(
+        self,
+        name: str,
+        code: str,
+        *,
+        contact: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+    ) -> int:
+        """Create a customer in the subledger."""
+        return db.create_customer(
+            name,
+            code,
+            contact=contact,
+            email=email,
+            phone=phone,
+            conn=self.conn,
+        )
+
+    def create_vendor(
+        self,
+        name: str,
+        code: str,
+        *,
+        contact: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+    ) -> int:
+        """Create a vendor in the subledger."""
+        return db.create_vendor(
+            name,
+            code,
+            contact=contact,
+            email=email,
+            phone=phone,
+            conn=self.conn,
+        )
+
+    def record_sale_on_account(
+        self,
+        date: str,
+        customer_id: int,
+        amount: float,
+        *,
+        description: str = "Sale on account",
+        ar_account_name: str = "Accounts Receivable",
+        revenue_account_name: str = "Service Income",
+        invoice_no: Optional[str] = None,
+        due_date: Optional[str] = None,
+        memo: Optional[str] = None,
+    ) -> int:
+        """
+        Convenience helper: create a simple sale on account and link a sales invoice.
+        Debit Accounts Receivable, credit Service Income.
+        """
+        ar_acc = db.get_account_by_name(ar_account_name, self.conn)
+        rev_acc = db.get_account_by_name(revenue_account_name, self.conn)
+        if not ar_acc or not rev_acc:
+            raise RuntimeError("Required accounts not found for sale on account.")
+        entry_id = self.record_entry(
+            date,
+            description,
+            [
+                JournalLine(account_id=ar_acc["id"], debit=amount),
+                JournalLine(account_id=rev_acc["id"], credit=amount),
+            ],
+            memo=memo,
+            status="posted",
+        )
+        db.create_sales_invoice(
+            customer_id,
+            entry_id,
+            date,
+            amount,
+            invoice_no=invoice_no,
+            due_date=due_date,
+            conn=self.conn,
+        )
+        return entry_id
+
+    def record_bill_on_account(
+        self,
+        date: str,
+        vendor_id: int,
+        amount: float,
+        *,
+        description: str = "Bill on account",
+        ap_account_name: str = "Accounts Payable",
+        expense_account_name: str = "Rent Expense",
+        bill_no: Optional[str] = None,
+        due_date: Optional[str] = None,
+        memo: Optional[str] = None,
+    ) -> int:
+        """
+        Convenience helper: create a simple bill on account and link a purchase bill.
+        Debit an expense, credit Accounts Payable.
+        """
+        ap_acc = db.get_account_by_name(ap_account_name, self.conn)
+        exp_acc = db.get_account_by_name(expense_account_name, self.conn)
+        if not ap_acc or not exp_acc:
+            raise RuntimeError("Required accounts not found for bill on account.")
+        entry_id = self.record_entry(
+            date,
+            description,
+            [
+                JournalLine(account_id=exp_acc["id"], debit=amount),
+                JournalLine(account_id=ap_acc["id"], credit=amount),
+            ],
+            memo=memo,
+            status="posted",
+        )
+        db.create_purchase_bill(
+            vendor_id,
+            entry_id,
+            date,
+            amount,
+            bill_no=bill_no,
+            due_date=due_date,
+            conn=self.conn,
         )
         return entry_id
 
@@ -492,6 +686,146 @@ class AccountingEngine:
         if not self.current_period_id:
             return []
         return list(db.get_trial_balance_snapshots(self.current_period_id, stage, conn=self.conn))
+
+    # --- Financial reporting helpers -------------------------------------------------
+
+    def generate_trial_balance_report(
+        self,
+        as_of: str,
+        *,
+        include_temporary: bool = True,
+    ) -> Dict[str, object]:
+        """
+        Build a structured trial balance report as of a date.
+        Returns rows plus total debits / credits and the difference.
+        """
+        rows = db.compute_trial_balance(
+            up_to_date=as_of,
+            include_temporary=include_temporary,
+            period_id=self.current_period_id,
+            conn=self.conn,
+        )
+        total_debits = sum(float(r["net_debit"] or 0.0) for r in rows)
+        total_credits = sum(float(r["net_credit"] or 0.0) for r in rows)
+        diff = round(total_debits - total_credits, 2)
+        return {
+            "as_of": as_of,
+            "include_temporary": include_temporary,
+            "rows": rows,
+            "total_debits": round(total_debits, 2),
+            "total_credits": round(total_credits, 2),
+            "difference": diff,
+        }
+
+    def generate_income_statement(self, start_date: str, end_date: str) -> Dict[str, object]:
+        """
+        Simple income statement for a date range based on trial balance activity.
+        Uses revenue and expense accounts only.
+        """
+        rows = db.compute_trial_balance(
+            from_date=start_date,
+            up_to_date=end_date,
+            include_temporary=True,
+            period_id=self.current_period_id,
+            conn=self.conn,
+        )
+        revenue_items: List[Dict[str, object]] = []
+        expense_items: List[Dict[str, object]] = []
+        total_revenue = 0.0
+        total_expense = 0.0
+        for r in rows:
+            acc_type = (r["type"] or "").lower()
+            net_debit = float(r["net_debit"] or 0.0)
+            net_credit = float(r["net_credit"] or 0.0)
+            if acc_type == "revenue":
+                amount = round(net_credit - net_debit, 2)
+                if abs(amount) > 0.005:
+                    revenue_items.append(
+                        {
+                            "code": r["code"],
+                            "name": r["name"],
+                            "amount": amount,
+                        }
+                    )
+                    total_revenue += amount
+            elif acc_type == "expense":
+                amount = round(net_debit - net_credit, 2)
+                if abs(amount) > 0.005:
+                    expense_items.append(
+                        {
+                            "code": r["code"],
+                            "name": r["name"],
+                            "amount": amount,
+                        }
+                    )
+                    total_expense += amount
+        total_revenue = round(total_revenue, 2)
+        total_expense = round(total_expense, 2)
+        net_income = round(total_revenue - total_expense, 2)
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "revenues": revenue_items,
+            "expenses": expense_items,
+            "total_revenue": total_revenue,
+            "total_expense": total_expense,
+            "net_income": net_income,
+        }
+
+    def generate_balance_sheet(self, as_of: str) -> Dict[str, object]:
+        """
+        Simple balance sheet as of a date using permanent accounts only.
+        """
+        rows = db.compute_trial_balance(
+            up_to_date=as_of,
+            include_temporary=False,
+            period_id=self.current_period_id,
+            conn=self.conn,
+        )
+        assets: List[Dict[str, object]] = []
+        liabilities: List[Dict[str, object]] = []
+        equity: List[Dict[str, object]] = []
+        total_assets = 0.0
+        total_liabilities = 0.0
+        total_equity = 0.0
+
+        for r in rows:
+            acc_type = (r["type"] or "").lower()
+            net_debit = float(r["net_debit"] or 0.0)
+            net_credit = float(r["net_credit"] or 0.0)
+            balance = net_debit - net_credit
+            amount = round(balance, 2)
+            if abs(amount) <= 0.005:
+                continue
+            line = {
+                "code": r["code"],
+                "name": r["name"],
+                "amount": amount,
+            }
+            if acc_type in ("asset", "contra asset"):
+                assets.append(line)
+                total_assets += amount
+            elif acc_type == "liability":
+                liabilities.append(line)
+                total_liabilities += amount
+            elif acc_type == "equity":
+                equity.append(line)
+                total_equity += amount
+
+        total_assets = round(total_assets, 2)
+        total_liabilities = round(total_liabilities, 2)
+        total_equity = round(total_equity, 2)
+
+        return {
+            "as_of": as_of,
+            "assets": assets,
+            "liabilities": liabilities,
+            "equity": equity,
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
+            "total_equity": total_equity,
+            "balance_check": round(total_assets - (total_liabilities + total_equity), 2),
+        }
 
     def generate_cash_flow(self, start_date: str, end_date: str) -> Dict[str, object]:
         """

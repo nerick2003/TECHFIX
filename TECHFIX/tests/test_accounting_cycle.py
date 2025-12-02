@@ -7,7 +7,10 @@ from techfix import db
 
 class TestAccountingCycle(unittest.TestCase):
     def setUp(self):
+        # Initialize a fresh database with the reference chart of accounts
+        db.init_db(reset=True)
         self.engine = AccountingEngine()
+        db.seed_chart_of_accounts(self.engine.conn)
 
     def tearDown(self):
         try:
