@@ -662,37 +662,8 @@ class TechFixApp(tk.Tk):
             if not hasattr(self, 'sidebar_brand_canvas'):
                 return
             c = self.sidebar_brand_canvas
-            colors = self.palette
             c.delete('all')
-            w = c.winfo_width() or c.winfo_reqwidth()
-            h = c.winfo_height() or 30
-            text = 'Techfix'
-            accent = colors.get('accent_color', '#2563eb')
-            # Letter spacing rendering: draw per-character with small gaps and multi-offset for thickness
-            try:
-                fnt = tkfont.nametofont('TechfixBrandFont')
-            except Exception:
-                fnt = None
-            spacing = 3
-            try:
-                widths = [int(fnt.measure(ch)) for ch in text] if fnt else [12 for _ in text]
-            except Exception:
-                widths = [12 for _ in text]
-            total = sum(widths) + spacing * max(0, len(text) - 1)
-            start_x = int((w - total) / 2)
-            y = int(h / 2)
-            offsets = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(1,-1),(-1,1),(1,1)]
-            x = start_x
-            for i, ch in enumerate(text):
-                # Draw outlines for thickness
-                for dx, dy in offsets:
-                    try:
-                        c.create_text(x + dx, y + dy, text=ch, fill=accent, font='TechfixBrandFont', anchor='w')
-                    except Exception:
-                        pass
-                # Draw the main glyph
-                c.create_text(x, y, text=ch, fill=accent, font='TechfixBrandFont', anchor='w')
-                x += widths[i] + spacing
+            # Intentionally leave the brand area blank (no 'Techfix' text)
         except Exception:
             pass
 
@@ -1506,9 +1477,20 @@ class TechFixApp(tk.Tk):
         container.pack(fill=tk.BOTH, expand=True)
 
         # Sidebar (left) + content (right) layout for modern look
-        sidebar = ttk.Frame(container, style="Techfix.Surface.TFrame", width=220)
+        # Start collapsed and expand on click for a modern "auto-hide" experience.
+        # Increase collapsed width so icons have more breathing room.
+        self.sidebar_collapsed_width = 90
+        self.sidebar_expanded_width = 220
+        # Track current sidebar state so we don't constantly re-layout on every event.
+        self._sidebar_expanded: bool = False
+        sidebar = ttk.Frame(
+            container,
+            style="Techfix.Surface.TFrame",
+            width=self.sidebar_collapsed_width,
+        )
         sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(12, 6), pady=12)
         sidebar.pack_propagate(False)
+        self.sidebar = sidebar
 
         right_wrap = ttk.Frame(container, style="Techfix.App.TFrame")
         right_wrap.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 12), pady=12)
@@ -1663,11 +1645,30 @@ class TechFixApp(tk.Tk):
         self._build_help_tab()
 
         # Build simple sidebar navigation (shows/hides content frames)
-        # Add a profile/header area inside the sidebar
+        # Compact header area inside the sidebar (just the toggle button)
         profile = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
-        profile.pack(fill=tk.X, pady=(6, 12), padx=6)
-        self.sidebar_brand_canvas = tk.Canvas(profile, height=30, highlightthickness=0, bd=0, bg=self.palette.get('surface_bg'))
-        self.sidebar_brand_canvas.pack(fill=tk.X, padx=6, pady=6)
+        profile.pack(fill=tk.X, pady=(4, 4), padx=6)
+
+        # Sidebar toggle button (click to expand/collapse)
+        toggle_row = ttk.Frame(profile, style="Techfix.Surface.TFrame")
+        toggle_row.pack(fill=tk.X, padx=6, pady=(0, 2))
+        self.sidebar_toggle_btn = ttk.Button(
+            toggle_row,
+            text="☰",
+            style="Techfix.Nav.TButton",
+            command=self._toggle_sidebar,
+        )
+        # Match other nav buttons: full-width, centered content
+        self.sidebar_toggle_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # Keep a placeholder brand canvas attribute (used by theme code),
+        # but do not pack it so it doesn't take extra vertical space.
+        self.sidebar_brand_canvas = tk.Canvas(
+            profile,
+            height=0,
+            highlightthickness=0,
+            bd=0,
+            bg=self.palette.get('surface_bg'),
+        )
         try:
             self.sidebar_brand_canvas.bind('<Configure>', lambda e: self._draw_sidebar_brand())
         except Exception:
@@ -1683,14 +1684,24 @@ class TechFixApp(tk.Tk):
                 self._nav_buttons = []
 
             row = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
-            row.pack(fill=tk.X, pady=4, padx=6)
+            row.pack(fill=tk.X, pady=2, padx=6)
 
             # Left accent indicator (thin bar)
             indicator = tk.Frame(row, width=6, bg=self.palette["surface_bg"], highlightthickness=0, bd=0, relief=tk.FLAT)
             indicator.pack(side=tk.LEFT, fill=tk.Y)
 
             # Button expands to fill remaining space
-            btn = ttk.Button(row, text=f"{emoji}  {text}", style="Techfix.Nav.TButton", command=lambda i=index: self._nav_to(i))
+            # Store emoji/label on the button so we can toggle between
+            # icon-only (collapsed) and icon+label (expanded) sidebar states.
+            btn = ttk.Button(
+                row,
+                text=emoji or text,
+                style="Techfix.Nav.TButton",
+                command=lambda i=index: self._nav_to(i),
+            )
+            # Custom attributes for hover-collapse behavior
+            btn._nav_emoji = emoji
+            btn._nav_label = text
             btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
             # Hover effects: change indicator on enter/leave when not selected
@@ -1756,6 +1767,91 @@ class TechFixApp(tk.Tk):
                 seq = f"<Control-Key-{digit}>"
                 self.bind(seq, lambda e, i=idx: self._nav_to(i))
         except Exception:
+            pass
+
+    # --- Sidebar toggle behavior (click-to-expand/collapse) ---------------------
+
+    def _toggle_sidebar(self) -> None:
+        """
+        Toggle sidebar between collapsed and expanded states on button click.
+        """
+        try:
+            if getattr(self, "_sidebar_expanded", False):
+                self._collapse_sidebar()
+            else:
+                self._expand_sidebar()
+        except Exception:
+            pass
+
+    def _expand_sidebar(self) -> None:
+        """
+        Expand the left sidebar (used by the click-to-toggle button).
+        Also restore full text labels for nav buttons.
+        """
+        try:
+            if not hasattr(self, "sidebar"):
+                return
+
+            # Avoid redundant layout work if we're already expanded.
+            if getattr(self, "_sidebar_expanded", False):
+                return
+
+            target_width = getattr(self, "sidebar_expanded_width", 220)
+            self.sidebar.configure(width=target_width)
+            self.sidebar.update_idletasks()
+
+            # Restore full labels on navigation buttons when expanded
+            for ind, btn in getattr(self, "_nav_buttons", []):
+                try:
+                    emoji = getattr(btn, "_nav_emoji", "")
+                    label = getattr(btn, "_nav_label", "")
+                    if emoji and label:
+                        btn.configure(text=f"{emoji}  {label}")
+                    elif label:
+                        btn.configure(text=label)
+                except Exception:
+                    continue
+
+            # Mark state so we don't expand repeatedly.
+            self._sidebar_expanded = True
+        except Exception:
+            # Avoid breaking the app if anything goes wrong
+            pass
+
+    def _collapse_sidebar(self) -> None:
+        """
+        Collapse the left sidebar (used by the click-to-toggle button).
+        Show icon-only (emoji) nav buttons to save space.
+        """
+        try:
+            if not hasattr(self, "sidebar"):
+                return
+
+            # If we're already collapsed, do nothing to avoid extra layout work.
+            if not getattr(self, "_sidebar_expanded", False):
+                return
+
+            target_width = getattr(self, "sidebar_collapsed_width", 60)
+            self.sidebar.configure(width=target_width)
+            self.sidebar.update_idletasks()
+
+            # Show only icons on navigation buttons when collapsed
+            for ind, btn in getattr(self, "_nav_buttons", []):
+                try:
+                    emoji = getattr(btn, "_nav_emoji", "")
+                    label = getattr(btn, "_nav_label", "")
+                    if emoji:
+                        btn.configure(text=emoji)
+                    elif label:
+                        # If no emoji, keep a very short label
+                        btn.configure(text=label[:3] + "…" if len(label) > 4 else label)
+                except Exception:
+                    continue
+
+            # Mark state so we don't collapse repeatedly.
+            self._sidebar_expanded = False
+        except Exception:
+            # Avoid breaking the app if anything goes wrong
             pass
 
     def _build_menubar(self) -> None:
@@ -3204,22 +3300,21 @@ class TechFixApp(tk.Tk):
     def _build_transactions_tab(self) -> None:
         frame = self.tab_txn
         
-        # Create a split pane container so both sides share space fairly
-        main_container = ttk.Panedwindow(frame, orient=tk.HORIZONTAL)
+        # Fixed two‑column layout (no draggable divider)
+        main_container = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         main_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        # Configure a simple responsive grid instead of a PanedWindow so the
+        # split is fixed and the divider cannot be dragged. Give both sides
+        # equal weight so the split feels fair/balanced.
+        main_container.columnconfigure(0, weight=1, minsize=450)   # Form section
+        main_container.columnconfigure(1, weight=1, minsize=450)   # Recent transactions
+        main_container.rowconfigure(0, weight=1)
+
         left_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
         right_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
-        try:
-            # Balanced split: equal weights for fair space distribution
-            main_container.add(left_panel, weight=1, minsize=500)  # Left panel for form
-            main_container.add(right_panel, weight=1, minsize=400)  # Right panel for recent transactions
-        except Exception:
-            # Fallback for older ttk versions that don't support minsize
-            try:
-                main_container.add(left_panel, weight=1)
-                main_container.add(right_panel, weight=1)
-            except Exception:
-                pass
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        right_panel.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         
         # Form frame - fills available space but doesn't expand beyond content
         form = ttk.LabelFrame(left_panel, text="New Transaction", style="Techfix.TLabelframe")
