@@ -9,11 +9,15 @@ def main():
     eng = AccountingEngine()
     db.seed_chart_of_accounts(eng.conn)
 
-    get = lambda name: db.get_account_by_name(name, eng.conn)['id']
+    def get(name):
+        account = db.get_account_by_name(name, eng.conn)
+        if account is None:
+            raise ValueError(f"Account '{name}' not found in database")
+        return account['id']
     cash = get('Cash')
     cap = get("Owner's Capital")
     supplies = get('Supplies')
-    equip = get('Equipment')
+    equip = get('Office Equipment')
     ap = get('Accounts Payable')
     ar = get('Accounts Receivable')
     rev = get('Service Revenue')
@@ -22,7 +26,7 @@ def main():
     draw = get("Owner's Drawings")
     sup_exp = get('Supplies Expense')
     dep_exp = get('Depreciation Expense')
-    acc_dep = get('Accumulated Depreciation - Equipment')
+    acc_dep = get('Accumulated Depreciation')
 
     def post(d, desc, lines):
         eng.record_entry(d, desc, [JournalLine(*ln) for ln in lines], status='posted')
