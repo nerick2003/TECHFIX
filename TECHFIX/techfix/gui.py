@@ -531,28 +531,41 @@ class TechFixApp(tk.Tk):
                     except Exception:
                         pass
 
-            # Update any Text widgets created for financial statements
-            for attr in ('income_text', 'balance_sheet_text', 'cash_flow_text', 'close_log', 'txn_memo'):
+            # Update any Text widgets created for financial statements and help text
+            for attr in ('income_text', 'balance_sheet_text', 'cash_flow_text', 'close_log', 'txn_memo', 'help_text'):
                 if hasattr(self, attr):
                     w = getattr(self, attr)
                     try:
+                        # Special handling for help_text to preserve flat appearance
+                        is_help_text = (attr == 'help_text')
                         w.configure(
                             bg=colors.get('surface_bg', '#ffffff'),
                             fg=colors.get('text_primary', '#000000'),
-                            insertbackground=colors.get('text_primary', '#000000'),
+                            insertbackground=colors.get('accent_color', '#2563eb') if is_help_text else colors.get('text_primary', '#000000'),
                             selectbackground=colors.get('accent_color', '#2563eb'),
                             selectforeground='#ffffff'
                         )
-                        try:
-                            w.configure(
-                                bd=1,
-                                relief=tk.SOLID,
-                                highlightthickness=1,
-                                highlightbackground=colors.get('entry_border', '#d8dee9'),
-                                highlightcolor=colors.get('accent_color', '#2563eb'),
-                            )
-                        except Exception:
-                            pass
+                        if not is_help_text:
+                            try:
+                                w.configure(
+                                    bd=1,
+                                    relief=tk.SOLID,
+                                    highlightthickness=1,
+                                    highlightbackground=colors.get('entry_border', '#d8dee9'),
+                                    highlightcolor=colors.get('accent_color', '#2563eb'),
+                                )
+                            except Exception:
+                                pass
+                        else:
+                            # Preserve flat appearance for help_text
+                            try:
+                                w.configure(
+                                    bd=0,
+                                    relief=tk.FLAT,
+                                    highlightthickness=0,
+                                )
+                            except Exception:
+                                pass
                         # Update commonly used tags so previously-inserted tagged text remains visible after theme change
                         try:
                             w.tag_configure('header', foreground=colors.get('accent_color', '#2563eb'))
@@ -2149,19 +2162,119 @@ class TechFixApp(tk.Tk):
                 def __init__(self, parent):
                     super().__init__(parent)
                     self.title("Scan Source Document")
-                    self.geometry("720x520")
+                    self.geometry("800x600")
                     self.resizable(False, False)
                     self.protocol('WM_DELETE_WINDOW', self._on_close)
                     self._running = True
-                    top = ttk.Frame(self)
-                    top.pack(fill=tk.X, padx=8, pady=6)
-                    self.status = ttk.Label(top, text="Point camera at QR/barcode…", style="Techfix.TLabel")
+                    
+                    # Apply theme colors
+                    try:
+                        palette = parent.palette
+                        self.configure(bg=palette.get("app_bg", "#f5f7fb"))
+                    except Exception:
+                        palette = THEMES.get("Light", {})
+                        self.configure(bg=palette.get("app_bg", "#f5f7fb"))
+                    
+                    # Main container
+                    main_container = ttk.Frame(self, style="Techfix.Surface.TFrame")
+                    main_container.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+                    
+                    # Header section with title and status
+                    header_frame = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
+                    header_frame.pack(fill=tk.X, pady=(0, 12))
+                    
+                    # Title
+                    title_label = tk.Label(
+                        header_frame,
+                        text="Scan QR Code or Barcode",
+                        bg=palette.get("surface_bg", "#ffffff"),
+                        fg=palette.get("text_primary", "#1f2937"),
+                        font=("{Segoe UI Semibold} 16")
+                    )
+                    title_label.pack(anchor=tk.W, pady=(0, 4))
+                    
+                    # Status label with better styling
+                    status_frame = ttk.Frame(header_frame, style="Techfix.Surface.TFrame")
+                    status_frame.pack(fill=tk.X, pady=(4, 0))
+                    
+                    self.status = tk.Label(
+                        status_frame,
+                        text="Point camera at QR code or barcode…",
+                        bg=palette.get("surface_bg", "#ffffff"),
+                        fg=palette.get("text_secondary", "#4b5563"),
+                        font=FONT_BASE
+                    )
                     self.status.pack(side=tk.LEFT)
-                    self.preview = ttk.Label(self)
-                    self.preview.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+                    
+                    # Close button
+                    close_btn = ttk.Button(
+                        status_frame,
+                        text="Close",
+                        command=self._on_close,
+                        style="Techfix.Theme.TButton",
+                        width=10
+                    )
+                    close_btn.pack(side=tk.RIGHT)
+                    
+                    # Preview frame with border
+                    preview_frame = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
+                    preview_frame.pack(fill=tk.BOTH, expand=True)
+                    
+                    # Create a frame for the preview with border styling
+                    preview_border = tk.Frame(
+                        preview_frame,
+                        bg=palette.get("entry_border", "#d8dee9"),
+                        highlightthickness=0
+                    )
+                    preview_border.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+                    
+                    # Preview label with centered content
+                    self.preview = tk.Label(
+                        preview_border,
+                        text="",
+                        bg=palette.get("surface_bg", "#ffffff"),
+                        fg=palette.get("text_primary", "#1f2937"),
+                        anchor=tk.CENTER
+                    )
+                    self.preview.pack(fill=tk.BOTH, expand=True)
+                    self.preview_border = preview_border
+                    self.palette = palette  # Store palette for later use
+                    
+                    # Instructions at bottom
+                    instructions_frame = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
+                    instructions_frame.pack(fill=tk.X, pady=(12, 0))
+                    
+                    instructions_text = (
+                        "• Position the QR code or barcode within the frame\n"
+                        "• Ensure good lighting and hold steady\n"
+                        "• The window will close automatically when a code is detected"
+                    )
+                    instructions_label = tk.Label(
+                        instructions_frame,
+                        text=instructions_text,
+                        bg=palette.get("surface_bg", "#ffffff"),
+                        fg=palette.get("text_secondary", "#6b7280"),
+                        font=("{Segoe UI} 9"),
+                        justify=tk.LEFT,
+                        anchor=tk.W
+                    )
+                    instructions_label.pack(anchor=tk.W, fill=tk.X)
+                    
+                    # Center window on screen
+                    self.update_idletasks()
+                    width = self.winfo_width()
+                    height = self.winfo_height()
+                    x = (self.winfo_screenwidth() // 2) - (width // 2)
+                    y = (self.winfo_screenheight() // 2) - (height // 2)
+                    self.geometry(f'{width}x{height}+{x}+{y}')
+                    
                     self.cap = cv2.VideoCapture(0)
                     if not self.cap or not self.cap.isOpened():
-                        self.status.configure(text="Camera access failed")
+                        self.status.configure(
+                            text="✗ Camera access failed",
+                            fg="#dc2626",
+                            bg=palette.get("surface_bg", "#ffffff")
+                        )
                         messagebox.showerror("Scan", "Cannot access camera. Check permissions/device.")
                         self._running = False
                         return
@@ -2190,21 +2303,90 @@ class TechFixApp(tk.Tk):
                                     payload = None
                         if payload is None:
                             try:
-                                detector = cv2.QRCodeDetector()
-                                data, points, _ = detector.detectAndDecode(gray)
+                                # Try QR code detection
+                                qr_detector = cv2.QRCodeDetector()
+                                data, points, _ = qr_detector.detectAndDecode(gray)
                                 if points is not None and data:
                                     payload = data
+                                else:
+                                    # Try barcode detection
+                                    try:
+                                        barcode_detector = cv2.barcode_BarcodeDetector()
+                                        retval, decoded_info, decoded_type = barcode_detector.detectAndDecode(gray)
+                                        if retval and decoded_info and len(decoded_info) > 0:
+                                            barcode_data = decoded_info[0] if isinstance(decoded_info, list) else str(decoded_info)
+                                            # For camera scan, barcode data is used directly (no file lookup)
+                                            payload = barcode_data
+                                    except AttributeError:
+                                        # barcode_BarcodeDetector not available
+                                        pass
+                                    except Exception:
+                                        pass
                             except Exception:
                                 pass
                         if payload:
-                            self.status.configure(text="Code detected – processing…")
+                            try:
+                                palette = self.master.palette
+                            except Exception:
+                                palette = THEMES.get("Light", {})
+                            self.status.configure(
+                                text="✓ Code detected – processing…",
+                                fg="#059669",
+                                bg=palette.get("surface_bg", "#ffffff")
+                            )
                             self._running = False
-                            self._apply_payload(payload)
-                            self._cleanup()
-                            return
+                            # Validate payload before applying
+                            try:
+                                data = self.master._parse_scanned_payload(payload)
+                                if data:
+                                    # Valid data - apply it and close window
+                                    self._apply_payload(payload)
+                                    self._cleanup()
+                                    return
+                                else:
+                                    # Invalid data - show error but still close window
+                                    try:
+                                        self.master.txn_prefill_status.configure(text="Scan error: invalid data format")
+                                    except Exception:
+                                        pass
+                                    try:
+                                        palette = self.master.palette
+                                    except Exception:
+                                        palette = THEMES.get("Light", {})
+                                    self.status.configure(
+                                        text="✗ Invalid code format",
+                                        fg="#dc2626",
+                                        bg=palette.get("surface_bg", "#ffffff")
+                                    )
+                                    self.update()
+                                    messagebox.showerror("Scan", "Invalid code format. Expected JSON or key=value pairs.")
+                                    self._cleanup()
+                                    return
+                            except Exception:
+                                # Error parsing - close window anyway
+                                self._cleanup()
+                                return
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                         img = Image.fromarray(rgb)
-                        img = img.resize((704, 396))
+                        
+                        # Calculate size to fit in preview area
+                        try:
+                            preview_width = self.preview.winfo_width() if self.preview.winfo_width() > 1 else 760
+                            preview_height = self.preview.winfo_height() if self.preview.winfo_height() > 1 else 420
+                        except Exception:
+                            preview_width = 760
+                            preview_height = 420
+                        
+                        # Maintain aspect ratio and fit to preview
+                        img_width, img_height = img.size
+                        scale_w = preview_width / img_width
+                        scale_h = preview_height / img_height
+                        scale = min(scale_w, scale_h)
+                        
+                        new_width = int(img_width * scale)
+                        new_height = int(img_height * scale)
+                        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                        
                         imgtk = ImageTk.PhotoImage(image=img)
                         self.preview.configure(image=imgtk)
                         self.preview.imgtk = imgtk
@@ -2218,6 +2400,7 @@ class TechFixApp(tk.Tk):
                     except Exception:
                         data = None
                     if not data:
+                        # This should not happen as we validate before calling this
                         try:
                             self.master.txn_prefill_status.configure(text="Scan error: invalid data format")
                         except Exception:
@@ -2225,10 +2408,15 @@ class TechFixApp(tk.Tk):
                         messagebox.showerror("Scan", "Invalid code format. Expected JSON or key=value pairs.")
                         return
                     try:
-                        self.master._apply_scanned_data(data)
+                        # For camera scan, we don't have a filename, so pass empty string
+                        self.master._apply_scanned_data(data, '')
                         self.master.txn_prefill_status.configure(text="Scan successful – fields populated")
-                    except Exception:
-                        messagebox.showerror("Scan", "Failed to apply scanned data")
+                    except Exception as e:
+                        try:
+                            logger.debug(f"Error applying scanned data: {e}", exc_info=True)
+                        except Exception:
+                            pass
+                        messagebox.showerror("Scan", f"Failed to apply scanned data: {str(e)}")
                 def _cleanup(self):
                     try:
                         if self.cap:
@@ -2303,7 +2491,7 @@ class TechFixApp(tk.Tk):
         except Exception:
             return None
 
-    def _apply_scanned_data(self, data: dict) -> None:
+    def _apply_scanned_data(self, data: dict, filename: str = '') -> None:
         try:
             # Use existing prefill and auto-entry helpers
             def _set_entry(w, v):
@@ -2338,31 +2526,88 @@ class TechFixApp(tk.Tk):
             if data.get('debit_account'):
                 try:
                     dd = self._match_account_display(data.get('debit_account'))
-                except Exception:
-                    pass
+                    # If exact match failed, try with stripped/cleaned version
+                    if not dd:
+                        cleaned = str(data.get('debit_account')).strip()
+                        if cleaned:
+                            dd = self._match_account_display(cleaned)
+                except Exception as e:
+                    try:
+                        logger.debug(f"Error matching debit account: {e}", exc_info=True)
+                    except Exception:
+                        pass
             if data.get('credit_account'):
                 try:
                     cc = self._match_account_display(data.get('credit_account'))
+                    # If exact match failed, try with stripped/cleaned version
+                    if not cc:
+                        cleaned = str(data.get('credit_account')).strip()
+                        if cleaned:
+                            cc = self._match_account_display(cleaned)
+                except Exception as e:
+                    try:
+                        logger.debug(f"Error matching credit account: {e}", exc_info=True)
+                    except Exception:
+                        pass
+            
+            # Always try auto-entry suggestions to fill in missing accounts
+            # Use filename if provided, otherwise try to construct a meaningful filename from data
+            auto_entry_filename = filename
+            if not auto_entry_filename:
+                # Try to construct filename from source_type and document_ref for better inference
+                source_type = data.get('source_type', '')
+                doc_ref = data.get('document_ref', '')
+                if source_type or doc_ref:
+                    parts = []
+                    if source_type:
+                        parts.append(source_type)
+                    if doc_ref:
+                        parts.append(doc_ref)
+                    auto_entry_filename = '_'.join(parts) if parts else ''
+            
+            sugg = {}
+            try:
+                sugg = self._auto_entry_from_data(data, auto_entry_filename)
+            except Exception as e:
+                try:
+                    logger.debug(f"Error in auto-entry from data: {e}", exc_info=True)
                 except Exception:
                     pass
+                sugg = {}
             
-            # Initialize sugg for use later
-            sugg = {}
-            # If accounts not found in data, try auto-entry suggestions
-            if not (dd and cc):
-                try:
-                    sugg = self._auto_entry_from_data(data, data.get('document_ref') or '')
-                except Exception:
-                    sugg = {}
-                if not dd:
-                    dd = sugg.get('debit_account_display')
-                if not cc:
-                    cc = sugg.get('credit_account_display')
+            # Use auto-entry suggestions to fill in missing accounts (even if one account was already matched)
+            # Note: sugg accounts are already matched by _default_accounts_for_source and _infer_accounts_from_context
+            if not dd:
+                dd = sugg.get('debit_account_display')
+            if not cc:
+                cc = sugg.get('credit_account_display')
             
-            # Set accounts if we have them
+            # Set accounts if we have them (even if only one is found)
             if dd or cc:
                 try:
                     self._set_accounts(dd, cc)
+                    # Force UI update after setting accounts
+                    self.update_idletasks()
+                    # Also trigger account changed events to ensure UI is updated
+                    if dd:
+                        try:
+                            self._on_account_changed('debit')
+                        except Exception:
+                            pass
+                    if cc:
+                        try:
+                            self._on_account_changed('credit')
+                        except Exception:
+                            pass
+                except Exception as e:
+                    try:
+                        logger.debug(f"Error setting accounts: {e}", exc_info=True)
+                    except Exception:
+                        pass
+            elif data.get('debit_account') or data.get('credit_account'):
+                # If we have account data but matching failed, log it for debugging
+                try:
+                    logger.debug(f"Account matching failed - debit: {data.get('debit_account')}, credit: {data.get('credit_account')}, sugg: {sugg}")
                 except Exception:
                     pass
             if hasattr(self, 'debit_amt') and (data.get('debit_amount') is not None or (sugg and sugg.get('debit_amount') is not None)):
@@ -2408,9 +2653,21 @@ class TechFixApp(tk.Tk):
         try:
             from tkinter import filedialog
             import os
+            # Update status
+            try:
+                if hasattr(self, 'txn_prefill_status'):
+                    self.txn_prefill_status.configure(text="Selecting image to scan…")
+            except Exception:
+                pass
             path = filedialog.askopenfilename(title="Select image to scan", filetypes=[('Images','*.png;*.jpg;*.jpeg;*.bmp;*.gif')])
             if not path:
                 return
+            # Update status
+            try:
+                if hasattr(self, 'txn_prefill_status'):
+                    self.txn_prefill_status.configure(text="Scanning image…")
+            except Exception:
+                pass
             try:
                 from pyzbar.pyzbar import decode as zbar_decode
             except Exception:
@@ -2435,16 +2692,150 @@ class TechFixApp(tk.Tk):
             if payload is None:
                 try:
                     import cv2
-                    detector = cv2.QRCodeDetector()
                     im = cv2.imread(path)
-                    if im is not None:
-                        data, points, _ = detector.detectAndDecode(im)
-                        if points is not None and data:
-                            payload = data
-                except Exception:
+                    if im is not None and im.size > 0:
+                        # Try QR code detection first
+                        qr_detector = cv2.QRCodeDetector()
+                        data, points, _ = qr_detector.detectAndDecode(im)
+                        if points is not None and data and len(str(data).strip()) > 0:
+                            payload = str(data).strip()
+                        else:
+                            # Try QR detection with grayscale for better detection
+                            try:
+                                gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+                                data, points, _ = qr_detector.detectAndDecode(gray)
+                                if points is not None and data and len(str(data).strip()) > 0:
+                                    payload = str(data).strip()
+                            except Exception:
+                                pass
+                        
+                        # If QR code not found, try barcode detection
+                        # Note: OpenCV barcode detector often fails with Code128 barcodes,
+                        # so we rely on the .txt file fallback below
+                        if payload is None:
+                            try:
+                                # OpenCV barcode detector (available in OpenCV 4.5+)
+                                barcode_detector = cv2.barcode_BarcodeDetector()
+                                retval, decoded_info, decoded_type = barcode_detector.detectAndDecode(im)
+                                if retval and decoded_info and len(decoded_info) > 0:
+                                    # decoded_info is a list, get first result
+                                    barcode_data = decoded_info[0] if isinstance(decoded_info, list) else str(decoded_info)
+                                    # Barcode may contain just doc_ref, try to find corresponding .txt file
+                                    looked_up = self._lookup_barcode_data(barcode_data, path)
+                                    payload = looked_up if looked_up else barcode_data
+                                else:
+                                    # Try barcode detection with grayscale
+                                    try:
+                                        gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+                                        retval, decoded_info, decoded_type = barcode_detector.detectAndDecode(gray)
+                                        if retval and decoded_info and len(decoded_info) > 0:
+                                            barcode_data = decoded_info[0] if isinstance(decoded_info, list) else str(decoded_info)
+                                            looked_up = self._lookup_barcode_data(barcode_data, path)
+                                            payload = looked_up if looked_up else barcode_data
+                                    except Exception:
+                                        pass
+                            except AttributeError:
+                                # barcode_BarcodeDetector not available in this OpenCV version
+                                pass
+                            except Exception as e:
+                                # Log barcode detection error but continue
+                                try:
+                                    logger.debug(f"OpenCV barcode detection error: {e}", exc_info=True)
+                                except Exception:
+                                    pass
+                    else:
+                        # Image file couldn't be read
+                        try:
+                            logger.debug(f"OpenCV could not read image file: {path}")
+                        except Exception:
+                            pass
+                except ImportError:
+                    # OpenCV not available, will be handled below
+                    pass
+                except Exception as e:
+                    # Log error for debugging but continue
+                    try:
+                        logger.debug(f"OpenCV detection error: {e}", exc_info=True)
+                    except Exception:
+                        pass
                     pass
             if not payload:
-                # Offer manual entry as fallback
+                # If no code detected, try to read corresponding .txt file (for barcode images)
+                # This is important for barcode images where the barcode contains just a doc_ref
+                # or when OpenCV barcode detector fails to detect the barcode
+                try:
+                    import os
+                    import re
+                    from pathlib import Path
+                    image_path_obj = Path(path)
+                    
+                    # Try direct .txt file with same name (e.g., txn_1_code128.png -> txn_1_code128.txt)
+                    txt_path = image_path_obj.with_suffix('.txt')
+                    if txt_path.exists():
+                        try:
+                            with open(txt_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    payload = content
+                                    # Update status
+                                    try:
+                                        if hasattr(self, 'txn_prefill_status'):
+                                            self.txn_prefill_status.configure(text="Barcode not detected, but found corresponding data file")
+                                    except Exception:
+                                        pass
+                        except Exception as e:
+                            try:
+                                logger.debug(f"Error reading .txt file: {e}", exc_info=True)
+                            except Exception:
+                                pass
+                    
+                    # Also try looking for files with similar patterns in the same directory
+                    # This handles cases where the filename doesn't match exactly
+                    if not payload:
+                        parent_dir = image_path_obj.parent
+                        if parent_dir.exists():
+                            img_name = image_path_obj.stem.lower()
+                            
+                            # Extract transaction number from image filename
+                            # Patterns: txn_1_code128, txn_1, barcode_00001, etc.
+                            img_txn_match = re.search(r'txn[_\s]*(\d+)', img_name)
+                            if not img_txn_match:
+                                img_txn_match = re.search(r'(\d+)', img_name)
+                            
+                            # Try to find matching .txt file
+                            for txt_file in parent_dir.glob('*.txt'):
+                                try:
+                                    txt_name = txt_file.stem.lower()
+                                    
+                                    # Check if it's a code128.txt file
+                                    if 'code128' in txt_name:
+                                        # Extract transaction number from txt filename
+                                        txt_txn_match = re.search(r'txn[_\s]*(\d+)', txt_name)
+                                        if not txt_txn_match:
+                                            txt_txn_match = re.search(r'(\d+)', txt_name)
+                                        
+                                        # If transaction numbers match
+                                        if img_txn_match and txt_txn_match and img_txn_match.group(1) == txt_txn_match.group(1):
+                                            with open(txt_file, 'r', encoding='utf-8') as f:
+                                                content = f.read().strip()
+                                                if content and (content.startswith('{') or '=' in content):
+                                                    payload = content
+                                                    try:
+                                                        if hasattr(self, 'txn_prefill_status'):
+                                                            self.txn_prefill_status.configure(text="Found matching transaction data file")
+                                                    except Exception:
+                                                        pass
+                                                    break
+                                except Exception:
+                                    continue
+                except Exception as e:
+                    try:
+                        logger.debug(f"Error in .txt file fallback: {e}", exc_info=True)
+                    except Exception:
+                        pass
+            
+            if not payload:
+                # Check for missing libraries first
                 missing_libs = []
                 try:
                     from pyzbar.pyzbar import decode
@@ -2456,40 +2847,127 @@ class TechFixApp(tk.Tk):
                     missing_libs.append("opencv-python")
                 
                 if missing_libs:
-                    # Offer manual entry option
-                    response = messagebox.askyesno(
-                        "Scanning Libraries Not Available",
-                        f"Required libraries not available: {', '.join(missing_libs)}\n\n"
-                        "Would you like to enter the data manually instead?\n\n"
-                        "(You can paste JSON or key=value format data)"
-                    )
-                    if response:
-                        self._manual_data_entry()
-                    return
+                    # Only show library error if critical libraries are missing
+                    if "opencv-python" in missing_libs:
+                        messagebox.showerror(
+                            "Scanning Libraries Not Available",
+                            f"Required library not available: opencv-python\n\n"
+                            "Please install it with: pip install opencv-python"
+                        )
+                        try:
+                            if hasattr(self, 'txn_prefill_status'):
+                                self.txn_prefill_status.configure(text="Scan error: opencv-python not installed")
+                        except Exception:
+                            pass
+                        return
+                    else:
+                        # Only pyzbar missing (optional for barcodes)
+                        msg = "No code detected in image. The image may not contain a QR code or barcode, or it may be too small/blurry.\n\nNote: Barcode scanning requires pyzbar library."
                 else:
-                    msg = "No code detected in image. The image may be too small, blurry, or the code format is not supported."
-                    response = messagebox.askyesno("Scan Failed", msg + "\n\nWould you like to enter the data manually instead?")
-                    if response:
-                        self._manual_data_entry()
-                    return
+                    # Libraries are available but no code detected
+                    msg = "No QR code or barcode detected in the selected image.\n\nThe image may be:\n• Too small or low resolution\n• Blurry or out of focus\n• Not containing a QR code or barcode\n• In an unsupported format"
+                
+                # Show error and let user try again or use manual entry
+                response = messagebox.askyesno(
+                    "Scan Failed", 
+                    msg + "\n\nWould you like to try entering the data manually instead?"
+                )
+                if response:
+                    self._manual_data_entry()
+                else:
+                    # Update status to show scan failed, but allow user to try again
+                    try:
+                        if hasattr(self, 'txn_prefill_status'):
+                            self.txn_prefill_status.configure(text="Scan failed - no code detected. Try another image or use manual entry.")
+                    except Exception:
+                        pass
+                return
+            if not payload:
+                # This should have been handled above, but double-check
+                try:
+                    if hasattr(self, 'txn_prefill_status'):
+                        self.txn_prefill_status.configure(text="Scan failed - no data found")
+                except Exception:
+                    pass
+                return
+            
             try:
                 data = self._parse_scanned_payload(payload)
-            except Exception:
+            except Exception as e:
+                try:
+                    logger.debug(f"Error parsing scanned payload: {e}", exc_info=True)
+                except Exception:
+                    pass
                 data = None
             if not data:
-                messagebox.showerror("Scan", "Invalid code data in image")
+                messagebox.showerror("Scan", f"Invalid code data in image.\n\nPayload: {payload[:100] if payload else 'None'}")
+                try:
+                    if hasattr(self, 'txn_prefill_status'):
+                        self.txn_prefill_status.configure(text="Scan failed - invalid data format")
+                except Exception:
+                    pass
                 return
             try:
-                self._apply_scanned_data(data)
+                # Pass the image file path to help with auto-entry inference
+                self._apply_scanned_data(data, path)
                 if hasattr(self, 'txn_prefill_status'):
                     self.txn_prefill_status.configure(text="Scan from image successful")
-            except Exception:
-                messagebox.showerror("Scan", "Failed to apply data from image")
+            except Exception as e:
+                try:
+                    logger.debug(f"Error applying scanned data: {e}", exc_info=True)
+                except Exception:
+                    pass
+                messagebox.showerror("Scan", f"Failed to apply data from image: {str(e)}")
         except Exception:
             try:
                 self.txn_prefill_status.configure(text="Scan from image failed")
             except Exception:
                 pass
+    
+    def _lookup_barcode_data(self, barcode_data: str, image_path: str) -> str | None:
+        """
+        Look up full transaction data from barcode.
+        If barcode contains just a document reference, try to find corresponding .txt file.
+        """
+        try:
+            import os
+            from pathlib import Path
+            
+            # If barcode data looks like JSON or key=value, return it directly
+            if (barcode_data.startswith('{') and barcode_data.endswith('}')) or '=' in barcode_data:
+                return barcode_data
+            
+            # Otherwise, it's likely just a document reference
+            # Try to find corresponding .txt file in the same directory
+            image_path_obj = Path(image_path)
+            txt_path = image_path_obj.with_suffix('.txt')
+            
+            if txt_path.exists():
+                try:
+                    with open(txt_path, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        if content:
+                            return content
+                except Exception:
+                    pass
+            
+            # Also try looking for files with the barcode data in the name
+            # (for mock_codes directory structure: txn_X_code128.txt)
+            parent_dir = image_path_obj.parent
+            if parent_dir.exists():
+                # Try pattern: *{barcode_data}*.txt or *code128.txt
+                for txt_file in parent_dir.glob('*code128.txt'):
+                    try:
+                        with open(txt_file, 'r', encoding='utf-8') as f:
+                            content = f.read().strip()
+                            # Check if this file's data contains the barcode as document_ref
+                            if content and barcode_data in content:
+                                return content
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return None
     
     def _manual_data_entry(self) -> None:
         """Allow user to manually paste/enter QR code or barcode data."""
@@ -2604,8 +3082,8 @@ class TechFixApp(tk.Tk):
             
             dialog.destroy()
             try:
-                # Apply the data
-                self._apply_scanned_data(data)
+                # Apply the data (no filename for manual entry)
+                self._apply_scanned_data(data, '')
                 # Force update button states after a short delay to ensure all UI updates are complete
                 self.after(100, self._update_post_buttons_enabled)
                 # Also update immediately
@@ -2803,29 +3281,50 @@ class TechFixApp(tk.Tk):
                     pass
             try:
                 if isinstance(data, dict):
-                    if self._assign_accounts_from_data(data):
-                        updated.append("Accounts")
-                    else:
-                        sugg = self._auto_entry_from_data(data, filename)
-                        if sugg:
-                            dd = sugg.get('debit_account_display')
-                            cc = sugg.get('credit_account_display')
-                            if dd or cc:
+                    # Try direct account matching first
+                    accounts_set = self._assign_accounts_from_data(data)
+                    
+                    # Get current account values to see what's missing
+                    current_dd = None
+                    current_cc = None
+                    try:
+                        if hasattr(self, 'debit_acct_var'):
+                            current_dd = self.debit_acct_var.get().strip()
+                        elif hasattr(self, 'debit_acct'):
+                            current_dd = self.debit_acct.get().strip()
+                        if hasattr(self, 'credit_acct_var'):
+                            current_cc = self.credit_acct_var.get().strip()
+                        elif hasattr(self, 'credit_acct'):
+                            current_cc = self.credit_acct.get().strip()
+                    except Exception:
+                        pass
+                    
+                    # Always try auto-entry to fill in missing accounts and other fields
+                    sugg = self._auto_entry_from_data(data, filename)
+                    if sugg:
+                        # Use auto-entry suggestions to fill in missing accounts
+                        dd = current_dd if current_dd else sugg.get('debit_account_display')
+                        cc = current_cc if current_cc else sugg.get('credit_account_display')
+                        if dd or cc:
+                            # Only update if we have new account information
+                            if (dd and not current_dd) or (cc and not current_cc):
                                 self._set_accounts(dd, cc)
-                                updated.append("Accounts")
-                            if hasattr(self, 'debit_amt') and sugg.get('debit_amount') is not None:
-                                _set_entry(self.debit_amt, f"{float(sugg.get('debit_amount')):.2f}")
-                                updated.append("Debit Amount")
-                            if hasattr(self, 'credit_amt') and sugg.get('credit_amount') is not None:
-                                _set_entry(self.credit_amt, f"{float(sugg.get('credit_amount')):.2f}")
-                                updated.append("Credit Amount")
-                            if hasattr(self, 'txn_desc') and sugg.get('description'):
-                                _set_entry(self.txn_desc, sugg.get('description'))
-                                updated.append("Description")
-                            if hasattr(self, 'txn_source_type') and sugg.get('source_type'):
-                                self.txn_source_type.set(sugg.get('source_type'))
-                            if hasattr(self, 'txn_doc_ref') and sugg.get('document_ref'):
-                                _set_entry(self.txn_doc_ref, sugg.get('document_ref'))
+                                if not accounts_set or (dd and not current_dd) or (cc and not current_cc):
+                                    updated.append("Accounts")
+                        # Always try to set amounts and other fields from auto-entry
+                        if hasattr(self, 'debit_amt') and sugg.get('debit_amount') is not None:
+                            _set_entry(self.debit_amt, f"{float(sugg.get('debit_amount')):.2f}")
+                            updated.append("Debit Amount")
+                        if hasattr(self, 'credit_amt') and sugg.get('credit_amount') is not None:
+                            _set_entry(self.credit_amt, f"{float(sugg.get('credit_amount')):.2f}")
+                            updated.append("Credit Amount")
+                        if hasattr(self, 'txn_desc') and sugg.get('description'):
+                            _set_entry(self.txn_desc, sugg.get('description'))
+                            updated.append("Description")
+                        if hasattr(self, 'txn_source_type') and sugg.get('source_type'):
+                            self.txn_source_type.set(sugg.get('source_type'))
+                        if hasattr(self, 'txn_doc_ref') and sugg.get('document_ref'):
+                            _set_entry(self.txn_doc_ref, sugg.get('document_ref'))
             except Exception:
                 pass
             if hasattr(self, "debit_amt") and data.get("debit_amount") is not None:
@@ -4803,16 +5302,17 @@ class TechFixApp(tk.Tk):
             d = (desc or '').strip().lower()
             s = (source or '').strip().lower()
             pairs: list[tuple[str, tuple[str, str]]] = [
-                ('rent', ('501 - Rent Expense', '101 - Cash')),
-                ('utilities', ('505 - Utilities Expense', '101 - Cash')),
-                ('supplies adjustment', ('503 - Supplies Expense', '124 - Supplies')),
-                ('adjust', ('503 - Supplies Expense', '124 - Supplies')),
-                ('payroll', ('502 - Salaries Expense', '101 - Cash')),
+                ('rent', ('403 - Rent Expense', '101 - Cash')),
+                ('utilities', ('404 - Utilities Expense', '101 - Cash')),
+                ('supplies adjustment', ('405 - Supplies Expense', '124 - Supplies')),
+                ('adjust', ('405 - Supplies Expense', '124 - Supplies')),
+                ('accrual adjustment', ('405 - Supplies Expense', '124 - Supplies')),
+                ('payroll', ('402 - Salaries & Wages', '101 - Cash')),
                 ('withdrawal', ("302 - Owner's Drawings", '101 - Cash')),
                 ('owner', ("302 - Owner's Drawings", '101 - Cash')),
                 ('deposit', ('101 - Cash', '401 - Service Revenue')),
-                ('invoice', ('106 - Accounts Receivable', '401 - Service Revenue')),
-                ('sales', ('101 - Cash', '402 - Sales Revenue')),
+                ('invoice', ('102 - Accounts Receivable', '401 - Service Revenue')),
+                ('sales', ('101 - Cash', '401 - Service Revenue')),
             ]
             match = None
             for k, v in pairs:
@@ -4821,10 +5321,26 @@ class TechFixApp(tk.Tk):
                     break
             if not match:
                 return (None, None)
-            accs = db.get_accounts(conn=self.engine.conn)
-            displays = {f"{a['code']} - {a['name']}" for a in accs}
-            da = match[0] if match[0] in displays else None
-            ca = match[1] if match[1] in displays else None
+            # Use flexible account matching instead of exact display string matching
+            da = self._match_account_display(match[0]) if match[0] else None
+            ca = self._match_account_display(match[1]) if match[1] else None
+            # If matching failed, try the original display strings as fallback
+            if not da and match[0]:
+                try:
+                    accs = db.get_accounts(conn=self.engine.conn)
+                    displays = {f"{a['code']} - {a['name']}" for a in accs}
+                    if match[0] in displays:
+                        da = match[0]
+                except Exception:
+                    pass
+            if not ca and match[1]:
+                try:
+                    accs = db.get_accounts(conn=self.engine.conn)
+                    displays = {f"{a['code']} - {a['name']}" for a in accs}
+                    if match[1] in displays:
+                        ca = match[1]
+                except Exception:
+                    pass
             return (da, ca)
         except Exception:
             return (None, None)
@@ -4833,10 +5349,45 @@ class TechFixApp(tk.Tk):
         try:
             if not text:
                 return None
+            text_str = str(text).strip()
+            if not text_str:
+                return None
+            text_lower = text_str.lower()
+            
+            # Extract account name from "CODE - Name" format if present
+            text_name = text_str
+            text_code = None
+            if ' - ' in text_str:
+                parts = text_str.split(' - ', 1)
+                if len(parts) == 2:
+                    text_code = parts[0].strip()
+                    text_name = parts[1].strip()
+            text_name_lower = text_name.lower()
+            
             accs = db.get_accounts()
             for a in accs:
                 disp = f"{a['code']} - {a['name']}"
-                if str(text) == disp or str(text) == a['code'] or str(text).lower() == a['name'].lower():
+                code = str(a.get('code', '')).strip()
+                name = str(a.get('name', '')).strip()
+                name_lower = name.lower()
+                
+                # Exact matches (highest priority)
+                if text_str == disp or text_str == code or text_lower == name_lower:
+                    return disp
+                
+                # Match by extracted account name (if format was "CODE - Name")
+                if text_name and text_name_lower == name_lower:
+                    return disp
+                
+                # Partial matches (if exact match failed)
+                # Check if account name is contained in text or vice versa (case-insensitive)
+                if text_name_lower in name_lower or name_lower in text_name_lower:
+                    return disp
+                
+                # Check if text matches code (even if partial)
+                if code and text_str in code:
+                    return disp
+                if text_code and code and text_code == code:
                     return disp
             return None
         except Exception:
@@ -5461,21 +6012,34 @@ class TechFixApp(tk.Tk):
         try:
             s = (source or '').strip().lower()
             pairs = self._rules_map.get('source_pairs') or {
-                'invoice': ('106 - Accounts Receivable', '401 - Service Revenue'),
+                'invoice': ('102 - Accounts Receivable', '401 - Service Revenue'),
                 'receipt': ('101 - Cash', '401 - Service Revenue'),
-                'sales': ('101 - Cash', '402 - Sales Revenue'),
-                'bank': ('101 - Cash', '402 - Sales Revenue'),
-                'payroll': ('502 - Salaries Expense', '101 - Cash'),
+                'sales': ('101 - Cash', '401 - Service Revenue'),
+                'bank': ('101 - Cash', '401 - Service Revenue'),
+                'payroll': ('402 - Salaries & Wages', '101 - Cash'),
+                'adjust': ('405 - Supplies Expense', '124 - Supplies'),
             }
             if s in pairs:
                 da_disp, ca_disp = pairs[s]
                 try:
-                    accs = db.get_accounts(conn=self.engine.conn)
-                    displays = {f"{a['code']} - {a['name']}" for a in accs}
-                    da = da_disp if da_disp in displays else None
-                    ca = ca_disp if ca_disp in displays else None
+                    # Use flexible account matching instead of exact display string matching
+                    da = self._match_account_display(da_disp) if da_disp else None
+                    ca = self._match_account_display(ca_disp) if ca_disp else None
+                    # If matching failed, try the original display strings as fallback
+                    if not da and da_disp:
+                        # Try to verify the account exists by checking if display format matches
+                        accs = db.get_accounts(conn=self.engine.conn)
+                        displays = {f"{a['code']} - {a['name']}" for a in accs}
+                        if da_disp in displays:
+                            da = da_disp
+                    if not ca and ca_disp:
+                        accs = db.get_accounts(conn=self.engine.conn)
+                        displays = {f"{a['code']} - {a['name']}" for a in accs}
+                        if ca_disp in displays:
+                            ca = ca_disp
                     return (da, ca)
                 except Exception:
+                    # Fallback to original strings if matching fails
                     return (da_disp, ca_disp)
             return (None, None)
         except Exception:
@@ -7265,6 +7829,8 @@ class TechFixApp(tk.Tk):
             insertbackground=self.palette.get("accent_color", "#2563eb"),
             state=tk.NORMAL,
         )
+        # Store reference so theme updates can modify it
+        self.help_text = help_text
         vsb = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=help_text.yview)
         help_text.configure(yscrollcommand=vsb.set)
         help_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)

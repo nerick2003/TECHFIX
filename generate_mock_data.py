@@ -1,6 +1,6 @@
 """
 Mock Data Generator for TechFix
-Generates mock_codes, mock_codes_jpg, and SampleSourceDocs files
+Generates mock_codes and SampleSourceDocs files
 """
 
 import os
@@ -134,7 +134,6 @@ class MockDataGenerator:
         # Create output directories
         self.base_dir = Path(__file__).parent
         self.mock_codes_dir = self.base_dir / "mock_codes"
-        self.mock_codes_jpg_dir = self.base_dir / "mock_codes_jpg"
         self.sample_docs_dir = self.base_dir / "SampleSourceDocs"
         
         self._create_directories()
@@ -143,7 +142,6 @@ class MockDataGenerator:
     def _create_directories(self):
         """Create output directories if they don't exist"""
         self.mock_codes_dir.mkdir(exist_ok=True)
-        self.mock_codes_jpg_dir.mkdir(exist_ok=True)
         self.sample_docs_dir.mkdir(exist_ok=True)
     
     def _build_ui(self):
@@ -194,7 +192,6 @@ class MockDataGenerator:
         
         # Create checkbox variables BEFORE using them in update_preview
         self.generate_mock_codes = tk.BooleanVar(value=True)
-        self.generate_mock_codes_jpg = tk.BooleanVar(value=True)
         self.generate_sample_docs = tk.BooleanVar(value=True)
         
         # Update preview when count changes
@@ -208,8 +205,6 @@ class MockDataGenerator:
                         total = 0
                         if self.generate_mock_codes.get():
                             total += count * 4  # QR PNG, QR TXT, Barcode PNG, Barcode TXT
-                        if self.generate_mock_codes_jpg.get():
-                            total += count
                         if self.generate_sample_docs.get():
                             total += count * 2  # Document + JSON
                         self.preview_var.set(f"→ {total:,} total files")
@@ -218,8 +213,6 @@ class MockDataGenerator:
                         files_per_txn = 0
                         if self.generate_mock_codes.get():
                             files_per_txn += 4
-                        if self.generate_mock_codes_jpg.get():
-                            files_per_txn += 1
                         if self.generate_sample_docs.get():
                             files_per_txn += 2
                         if files_per_txn > 0:
@@ -244,14 +237,12 @@ class MockDataGenerator:
             self.count_var.trace_add('write', update_preview)
             self.count_mode.trace_add('write', update_preview)
             self.generate_mock_codes.trace_add('write', update_preview)
-            self.generate_mock_codes_jpg.trace_add('write', update_preview)
             self.generate_sample_docs.trace_add('write', update_preview)
         except AttributeError:
             # Fallback for older Tcl versions
             self.count_var.trace('w', update_preview)
             self.count_mode.trace('w', update_preview)
             self.generate_mock_codes.trace('w', update_preview)
-            self.generate_mock_codes_jpg.trace('w', update_preview)
             self.generate_sample_docs.trace('w', update_preview)
         
         update_preview()  # Initial update
@@ -286,12 +277,6 @@ class MockDataGenerator:
             options_frame, 
             text="mock_codes (QR + Barcode PNG + TXT)", 
             variable=self.generate_mock_codes
-        ).pack(anchor=tk.W, pady=2)
-        
-        ttk.Checkbutton(
-            options_frame, 
-            text="mock_codes_jpg (Barcode JPG)", 
-            variable=self.generate_mock_codes_jpg
         ).pack(anchor=tk.W, pady=2)
         
         ttk.Checkbutton(
@@ -381,7 +366,6 @@ class MockDataGenerator:
         
         if not any([
             self.generate_mock_codes.get(),
-            self.generate_mock_codes_jpg.get(),
             self.generate_sample_docs.get()
         ]):
             messagebox.showwarning("Warning", "Please select at least one type to generate")
@@ -401,8 +385,6 @@ class MockDataGenerator:
                 files_per_txn = 0
                 if self.generate_mock_codes.get():
                     files_per_txn += 4
-                if self.generate_mock_codes_jpg.get():
-                    files_per_txn += 1
                 if self.generate_sample_docs.get():
                     files_per_txn += 2
                 
@@ -421,8 +403,6 @@ class MockDataGenerator:
             total_files = 0
             if self.generate_mock_codes.get():
                 total_files += transactions * 4  # QR PNG, QR TXT, Barcode PNG, Barcode TXT
-            if self.generate_mock_codes_jpg.get():
-                total_files += transactions
             if self.generate_sample_docs.get():
                 total_files += transactions * 2  # Document + JSON
             
@@ -432,10 +412,6 @@ class MockDataGenerator:
             if self.generate_mock_codes.get():
                 self._log(f"Generating {transactions} mock_codes transactions ({transactions * 4} files)...")
                 files_generated += self._generate_mock_codes(transactions, files_generated, total_files)
-            
-            if self.generate_mock_codes_jpg.get():
-                self._log(f"Generating {transactions} mock_codes_jpg transactions ({transactions} files)...")
-                files_generated += self._generate_mock_codes_jpg(transactions, files_generated, total_files)
             
             if self.generate_sample_docs.get():
                 self._log(f"Generating {transactions} SampleSourceDocs transactions ({transactions * 2} files)...")
@@ -594,69 +570,6 @@ class MockDataGenerator:
             
             if i % max(1, count // 100) == 0 or i == count:
                 self._log(f"  Generated {i}/{count} mock_codes...")
-        
-        return files_generated
-    
-    def _generate_mock_codes_jpg(self, count, start_progress, total):
-        """Generate mock_codes_jpg (Barcode JPG)"""
-        files_generated = 0
-        
-        for i in range(1, count + 1):
-            doc_ref = random.randint(10000, 99999)
-            
-            # Generate barcode
-            try:
-                barcode = Code128(str(doc_ref), writer=ImageWriter())
-                temp_path = self.mock_codes_jpg_dir / f"barcode_{i}_temp"
-                barcode.save(str(temp_path))
-                
-                # Convert to JPG
-                # The barcode library saves as PNG, so we need to find the actual file
-                possible_extensions = ['.png', '.svg']
-                img_path = None
-                for ext in possible_extensions:
-                    test_path = temp_path.with_suffix(ext)
-                    if test_path.exists():
-                        img_path = test_path
-                        break
-                
-                if img_path and img_path.exists():
-                    if img_path.suffix == '.png':
-                        img = Image.open(img_path)
-                        img = img.convert('RGB')
-                        jpg_path = self.mock_codes_jpg_dir / f"barcode_{i:05d}.jpg"
-                        img.save(jpg_path, 'JPEG', quality=95)
-                        img_path.unlink()  # Delete temporary file
-                        files_generated += 1
-                        self._update_progress(start_progress + files_generated, total)
-                    elif img_path.suffix == '.svg':
-                        # SVG not supported, create placeholder
-                        img = Image.new('RGB', (200, 100), color='white')
-                        from PIL import ImageDraw
-                        draw = ImageDraw.Draw(img)
-                        draw.text((10, 40), f"BARCODE-{doc_ref}", fill='black')
-                        jpg_path = self.mock_codes_jpg_dir / f"barcode_{i:05d}.jpg"
-                        img.save(jpg_path, 'JPEG', quality=95)
-                        img_path.unlink()
-                        files_generated += 1
-                        self._update_progress(start_progress + files_generated, total)
-            except Exception as e:
-                self._log(f"  Warning: Failed to generate barcode JPG {i}: {str(e)}")
-                # Create a placeholder image instead
-                try:
-                    img = Image.new('RGB', (200, 100), color='white')
-                    from PIL import ImageDraw
-                    draw = ImageDraw.Draw(img)
-                    draw.text((10, 40), f"BARCODE-{doc_ref}", fill='black')
-                    jpg_path = self.mock_codes_jpg_dir / f"barcode_{i:05d}.jpg"
-                    img.save(jpg_path, 'JPEG', quality=95)
-                    files_generated += 1
-                    self._update_progress(start_progress + files_generated, total)
-                except Exception:
-                    pass
-            
-            if i % max(1, count // 100) == 0 or i == count:
-                self._log(f"  Generated {i}/{count} mock_codes_jpg...")
         
         return files_generated
     
