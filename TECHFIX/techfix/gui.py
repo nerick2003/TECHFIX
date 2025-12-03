@@ -961,6 +961,55 @@ class TechFixApp(tk.Tk):
         if hasattr(self, 'main_frame') and hasattr(self.main_frame, 'winfo_children'):
             self.main_frame.update_idletasks()
         try:
+            # --- Aspect-ratio-aware layout tweaks ---------------------------------
+            # Use current window size to adjust proportions so the UI feels
+            # balanced on wide desktop monitors vs. shorter laptop screens.
+            try:
+                win_w = max(self.winfo_width(), 1)
+                win_h = max(self.winfo_height(), 1)
+                aspect = win_w / win_h
+            except Exception:
+                win_w = win_h = 1
+                aspect = 1.6  # sensible default
+
+            # Sidebar width responds to aspect ratio:
+            # - On very wide screens, keep it relatively slim.
+            # - On taller / squarer laptop-style windows, allow a bit more width.
+            if hasattr(self, 'sidebar'):
+                if aspect >= 1.8:
+                    # Very wide (big external monitor)
+                    base_collapsed = 80
+                    base_expanded = 210
+                elif aspect >= 1.4:
+                    # Typical laptop / standard monitor
+                    base_collapsed = 90
+                    base_expanded = 230
+                else:
+                    # Tall window (portrait / split-screen)
+                    base_collapsed = 100
+                    base_expanded = 250
+
+                self.sidebar_collapsed_width = base_collapsed
+                self.sidebar_expanded_width = base_expanded
+
+                target_width = self.sidebar_expanded_width if getattr(self, "_sidebar_expanded", False) else self.sidebar_collapsed_width
+                try:
+                    self.sidebar.configure(width=target_width)
+                    self.sidebar.update_idletasks()
+                except Exception:
+                    pass
+
+            # Optionally tweak the "Global Action" button styling for very wide monitors.
+            try:
+                if hasattr(self, "global_action_btn"):
+                    if win_w >= 1400:
+                        self.global_action_btn.configure(style="Techfix.TButton")
+                    else:
+                        self.global_action_btn.configure(style="Techfix.TButton")
+            except Exception:
+                pass
+
+            # --- Existing responsive column behavior ------------------------------
             if hasattr(self, 'cycle_tree'):
                 total = self.cycle_tree.winfo_width() or 1
                 col_defs = {
@@ -1020,6 +1069,135 @@ class TechFixApp(tk.Tk):
                         self.journal_tree.column(c, width=max(80, w), stretch=(c == 'description'))
                     except Exception:
                         pass
+            
+            # --- Responsive button positioning for transaction form ---
+            # Ensure buttons stay visible regardless of aspect ratio
+            if hasattr(self, 'action_frame') and hasattr(self, 'btn_container') and hasattr(self, 'btn_recent'):
+                try:
+                    # Get the available width of the action frame
+                    self.action_frame.update_idletasks()
+                    frame_width = self.action_frame.winfo_width() or 500
+                    
+                    # Always keep all buttons in one horizontal row
+                    self.btn_recent.grid_configure(row=0, column=0)
+                    self.btn_clear.grid_configure(row=0, column=1)
+                    self.btn_draft.grid_configure(row=0, column=2)
+                    self.btn_post.grid_configure(row=0, column=3)
+                    self.btn_container.grid_configure(sticky="e")
+                except Exception:
+                    pass
+            
+            # --- Responsive scan buttons layout ---
+            # Wrap scan buttons to multiple rows when space is tight
+            if hasattr(self, 'scan_row') and hasattr(self, 'scan_btn'):
+                try:
+                    self.scan_row.update_idletasks()
+                    scan_row_width = self.scan_row.winfo_width() or 400
+                    
+                    # Estimate width needed for all buttons in one row
+                    # Scan (10) + Scan Image (12) + Enter Manually (14) + padding ≈ 350px
+                    estimated_scan_width = 350
+                    
+                    if scan_row_width >= estimated_scan_width:
+                        # Enough space - keep all buttons in one row
+                        self.scan_btn.grid_configure(row=0, column=0)
+                        self.scan_img_btn.grid_configure(row=0, column=1)
+                        self.manual_entry_btn.grid_configure(row=0, column=2)
+                    else:
+                        # Tight space - wrap to two rows
+                        self.scan_btn.grid_configure(row=0, column=0)
+                        self.scan_img_btn.grid_configure(row=1, column=0)
+                        self.manual_entry_btn.grid_configure(row=1, column=1)
+                except Exception:
+                    pass
+            
+            # --- Options container layout ---
+            # Always keep all options in one horizontal row
+            if hasattr(self, 'options_container') and hasattr(self, 'adjust_cb'):
+                try:
+                    # Always keep all in one row
+                    self.adjust_cb.grid_configure(row=0, column=0)
+                    self.reverse_cb.grid_configure(row=0, column=1)
+                    self.reverse_label.grid_configure(row=0, column=2)
+                    self.txn_reverse_date.grid_configure(row=0, column=3)
+                except Exception:
+                    pass
+            
+            # --- Responsive Journal tab toolbar layout ---
+            if hasattr(self, 'journal_toolbar') and hasattr(self, 'journal_left_buttons'):
+                try:
+                    self.journal_toolbar.update_idletasks()
+                    toolbar_width = self.journal_toolbar.winfo_width() or 800
+                    
+                    # Estimate width needed: Refresh + Export + Paging + Filters ≈ 600px
+                    estimated_toolbar_width = 600
+                    
+                    if toolbar_width >= estimated_toolbar_width:
+                        # Enough space - keep all in one row
+                        self.journal_left_buttons.grid_configure(row=0, column=0)
+                        self.journal_filter_frame.grid_configure(row=0, column=2)
+                        # Reset filter widgets to row 0
+                        if hasattr(self, 'journal_filter_label'):
+                            self.journal_filter_label.grid_configure(row=0, column=0)
+                            self.journal_date_from.grid_configure(row=0, column=1)
+                            if hasattr(self, 'journal_to_label'):
+                                self.journal_to_label.grid_configure(row=0, column=2)
+                            self.journal_date_to.grid_configure(row=0, column=3)
+                            self.journal_account_filter.grid_configure(row=0, column=4)
+                    else:
+                        # Tight space - wrap filters to second row
+                        self.journal_left_buttons.grid_configure(row=0, column=0)
+                        self.journal_filter_frame.grid_configure(row=1, column=0, columnspan=3, sticky="w")
+                        # Move filter widgets to row 1
+                        if hasattr(self, 'journal_filter_label'):
+                            self.journal_filter_label.grid_configure(row=1, column=0)
+                            self.journal_date_from.grid_configure(row=1, column=1)
+                            if hasattr(self, 'journal_to_label'):
+                                self.journal_to_label.grid_configure(row=1, column=2)
+                            self.journal_date_to.grid_configure(row=1, column=3)
+                            self.journal_account_filter.grid_configure(row=1, column=4)
+                except Exception:
+                    pass
+            
+            # --- Responsive Ledger tab toolbar layout ---
+            if hasattr(self, 'ledger_toolbar') and hasattr(self, 'ledger_left_buttons'):
+                try:
+                    self.ledger_toolbar.update_idletasks()
+                    toolbar_width = self.ledger_toolbar.winfo_width() or 800
+                    
+                    # Estimate width needed: Refresh + Post + Export + Paging + Filter ≈ 650px
+                    estimated_toolbar_width = 650
+                    
+                    if toolbar_width >= estimated_toolbar_width:
+                        # Enough space - keep all in one row
+                        self.ledger_left_buttons.grid_configure(row=0, column=0)
+                        self.ledger_filter_frame.grid_configure(row=0, column=2)
+                        # Reset filter widgets to row 0
+                        if hasattr(self, 'ledger_account_label'):
+                            self.ledger_account_label.grid_configure(row=0, column=0)
+                            self.ledger_account_filter.grid_configure(row=0, column=1)
+                    else:
+                        # Tight space - wrap filters to second row
+                        self.ledger_left_buttons.grid_configure(row=0, column=0)
+                        self.ledger_filter_frame.grid_configure(row=1, column=0, columnspan=3, sticky="w")
+                        # Move filter widgets to row 1
+                        if hasattr(self, 'ledger_account_label'):
+                            self.ledger_account_label.grid_configure(row=1, column=0)
+                            self.ledger_account_filter.grid_configure(row=1, column=1)
+                except Exception:
+                    pass
+            
+            # --- Responsive Financial Statements tab buttons layout ---
+            # Keep all buttons in a single horizontal row
+            if hasattr(self, 'fs_btn_frame') and hasattr(self, 'fs_run_btn'):
+                try:
+                    # Always keep all buttons in one horizontal row
+                    self.fs_preset_box.grid_configure(row=0, column=0)
+                    self.fs_run_btn.grid_configure(row=0, column=1)
+                    self.fs_export_xls_btn.grid_configure(row=0, column=2)
+                    self.fs_export_txt_btn.grid_configure(row=0, column=3)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1060,6 +1238,116 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
         self.destroy()
+
+    def _on_global_action(self) -> None:
+        """
+        Open a small chooser window that lets the user pick a target
+        aspect ratio (e.g., laptop vs. desktop monitor). Choosing an option
+        resizes this main window to that preset.
+        """
+        try:
+            # Reuse the chooser window if it already exists.
+            if hasattr(self, "_aspect_chooser") and self._aspect_chooser is not None:
+                try:
+                    self._aspect_chooser.deiconify()
+                    self._aspect_chooser.lift()
+                    self._aspect_chooser.focus_set()
+                    return
+                except Exception:
+                    self._aspect_chooser = None
+
+            chooser = tk.Toplevel(self)
+            chooser.title("Choose Aspect Ratio")
+            chooser.resizable(False, False)
+            chooser.transient(self)
+            try:
+                chooser.grab_set()
+            except Exception:
+                pass
+
+            self._aspect_chooser = chooser
+
+            frame = ttk.Frame(chooser, padding=12)
+            frame.pack(fill=tk.BOTH, expand=True)
+
+            ttk.Label(
+                frame,
+                text="Pick a window size / aspect ratio profile:",
+                style="Techfix.AppBar.TLabel",
+            ).pack(anchor="w", pady=(0, 8))
+
+            # Preset options: (label, width, height)
+            presets = [
+                ("Laptop 16:9 (1366 x 768)", 1366, 768),
+                ("Desktop 16:9 (1920 x 1080)", 1920, 1080),
+                ("Square-ish 4:3 (1200 x 900)", 1200, 900),
+                ("Tall / Coding Split (1100 x 1200)", 1100, 1200),
+            ]
+
+            for text, w, h in presets:
+                ttk.Button(
+                    frame,
+                    text=text,
+                    style="Techfix.TButton",
+                    command=lambda ww=w, hh=h, win=chooser: self._apply_aspect_preset(ww, hh, win),
+                ).pack(fill=tk.X, pady=3)
+
+            ttk.Button(
+                frame,
+                text="Close",
+                style="Techfix.TButton",
+                command=chooser.destroy,
+            ).pack(fill=tk.X, pady=(10, 0))
+
+            # Roughly center the chooser over the main window.
+            try:
+                self.update_idletasks()
+                chooser.update_idletasks()
+                main_x = self.winfo_rootx()
+                main_y = self.winfo_rooty()
+                main_w = self.winfo_width()
+                main_h = self.winfo_height()
+                ch_w = chooser.winfo_width()
+                ch_h = chooser.winfo_height()
+                x = max(0, main_x + (main_w - ch_w) // 2)
+                y = max(0, main_y + (main_h - ch_h) // 2)
+                chooser.geometry(f"+{x}+{y}")
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _apply_aspect_preset(self, target_width: int, target_height: int, chooser: Optional[tk.Toplevel] = None) -> None:
+        """
+        Resize the main window to a given width/height, roughly centered
+        on the current screen, and close the chooser if provided.
+        """
+        try:
+            # Clamp to screen size so we don't place the window off-screen.
+            screen_w = max(self.winfo_screenwidth(), 1)
+            screen_h = max(self.winfo_screenheight(), 1)
+
+            w = min(target_width, screen_w)
+            h = min(target_height, screen_h)
+
+            x = max(0, (screen_w - w) // 2)
+            y = max(0, (screen_h - h) // 2)
+
+            # Ensure normal state so geometry is respected.
+            try:
+                self.state("normal")
+            except Exception:
+                pass
+
+            self.geometry(f"{w}x{h}+{x}+{y}")
+
+            if chooser is not None:
+                try:
+                    chooser.destroy()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def set_status(self, text: str) -> None:
         try:
@@ -1770,7 +2058,23 @@ class TechFixApp(tk.Tk):
 
         exit_wrap = ttk.Frame(sidebar, style="Techfix.Surface.TFrame")
         exit_wrap.pack(side=tk.BOTTOM, fill=tk.X, padx=6, pady=(12, 6))
-        ttk.Button(exit_wrap, text="Exit", command=self._on_close, style="Techfix.Danger.TButton").pack(fill=tk.X)
+
+        # A global action button that stays visible on all window sizes (PC, laptop, etc.)
+        # because it is anchored to the bottom of the sidebar and stretches horizontally.
+        self.global_action_btn = ttk.Button(
+            exit_wrap,
+            text="Global Action",
+            command=self._on_global_action,
+            style="Techfix.TButton",
+        )
+        self.global_action_btn.pack(fill=tk.X, pady=(0, 4))
+
+        ttk.Button(
+            exit_wrap,
+            text="Exit",
+            command=self._on_close,
+            style="Techfix.Danger.TButton",
+        ).pack(fill=tk.X)
 
         # Global keyboard shortcuts for navigation between major tabs
         try:
@@ -3799,25 +4103,73 @@ class TechFixApp(tk.Tk):
     def _build_transactions_tab(self) -> None:
         frame = self.tab_txn
         
-        # Fixed two‑column layout (no draggable divider)
+        # Single column layout - form takes full width
         main_container = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         main_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
-        # Configure a simple responsive grid instead of a PanedWindow so the
-        # split is fixed and the divider cannot be dragged. Give both sides
-        # equal weight so the split feels fair/balanced.
-        main_container.columnconfigure(0, weight=1, minsize=450)   # Form section
-        main_container.columnconfigure(1, weight=1, minsize=450)   # Recent transactions
+        # Configure single column to take full width
+        main_container.columnconfigure(0, weight=1)
         main_container.rowconfigure(0, weight=1)
 
         left_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
-        right_panel = ttk.Frame(main_container, style="Techfix.Surface.TFrame")
-        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
-        right_panel.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        left_panel.grid(row=0, column=0, sticky="nsew")
         
-        # Form frame - fills available space but doesn't expand beyond content
-        form = ttk.LabelFrame(left_panel, text="New Transaction", style="Techfix.TLabelframe")
-        form.pack(fill=tk.BOTH, expand=True, padx=(0, 8), pady=(0, 0))
+        # Create scrollable container for the form
+        scroll_container = ttk.Frame(left_panel, style="Techfix.Surface.TFrame")
+        scroll_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Create canvas with scrollbar
+        canvas = tk.Canvas(scroll_container, bd=0, highlightthickness=0, bg=self.palette["surface_bg"])
+        scrollbar = ttk.Scrollbar(scroll_container, orient="vertical", command=canvas.yview)
+        
+        # Form frame - inside scrollable canvas
+        form = ttk.LabelFrame(canvas, text="New Transaction", style="Techfix.TLabelframe")
+        
+        # Configure the canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack the scrollbar and canvas
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        # Create window in canvas for the form
+        canvas_window = canvas.create_window((0, 0), window=form, anchor="nw", tags=("form_frame",))
+        
+        # Configure the scroll region when the form changes size
+        def _on_form_configure(event):
+            # Update the scroll region to encompass the form
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Make sure the form fills the canvas width
+            canvas_width = event.width
+            canvas.itemconfig("form_frame", width=canvas_width)
+        
+        def _on_canvas_configure(event):
+            # Update form width when canvas resizes
+            canvas_width = event.width
+            canvas.itemconfig("form_frame", width=canvas_width)
+        
+        def _on_mousewheel(event):
+            # Handle mousewheel scrolling
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            return "break"
+        
+        # Bind events
+        form.bind("<Configure>", _on_form_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        
+        # Bind mousewheel to canvas and form children
+        def bind_mousewheel(widget):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            for child in widget.winfo_children():
+                bind_mousewheel(child)
+        
+        bind_mousewheel(canvas)
+        
+        # Store canvas reference for theme updates
+        if not hasattr(self, '_scroll_canvases'):
+            self._scroll_canvases = []
+        self._scroll_canvases.append(canvas)
 
         # Column weight strategy: better balanced distribution
         # Labels: compact, Input fields: expand proportionally
@@ -3966,9 +4318,17 @@ class TechFixApp(tk.Tk):
         )
         browse_btn.grid(row=0, column=1, sticky="e")
         
-        # Second row: Scan buttons
+        # Second row: Scan buttons - use grid for better responsive layout
         scan_row = ttk.Frame(attach_frame, style="Techfix.Surface.TFrame")
         scan_row.grid(row=1, column=0, sticky="we", pady=(4, 0))
+        
+        # Configure scan_row to allow wrapping
+        scan_row.columnconfigure(0, weight=1, minsize=0)
+        scan_row.columnconfigure(1, weight=0)
+        scan_row.columnconfigure(2, weight=0)
+        scan_row.columnconfigure(3, weight=0)
+        scan_row.rowconfigure(0, weight=0)
+        scan_row.rowconfigure(1, weight=0)  # Second row for wrapping
         
         scan_btn = ttk.Button(
             scan_row,
@@ -3977,7 +4337,7 @@ class TechFixApp(tk.Tk):
             style="Techfix.Theme.TButton",
             width=10
         )
-        scan_btn.pack(side=tk.LEFT, padx=(0, 4))
+        scan_btn.grid(row=0, column=0, padx=(0, 2), pady=2, sticky="w")
         
         scan_img_btn = ttk.Button(
             scan_row,
@@ -3986,7 +4346,7 @@ class TechFixApp(tk.Tk):
             style="Techfix.Theme.TButton",
             width=12
         )
-        scan_img_btn.pack(side=tk.LEFT, padx=(0, 4))
+        scan_img_btn.grid(row=0, column=1, padx=(2, 4), pady=2, sticky="w")
         
         manual_entry_btn = ttk.Button(
             scan_row,
@@ -3995,7 +4355,13 @@ class TechFixApp(tk.Tk):
             style="Techfix.Theme.TButton",
             width=14
         )
-        manual_entry_btn.pack(side=tk.LEFT)
+        manual_entry_btn.grid(row=0, column=2, padx=(4, 0), pady=2, sticky="w")
+        
+        # Store references for responsive layout
+        self.scan_row = scan_row
+        self.scan_btn = scan_btn
+        self.scan_img_btn = scan_img_btn
+        self.manual_entry_btn = manual_entry_btn
         
         # Status label below buttons - wrap text to prevent stretching
         self.txn_prefill_status = ttk.Label(
@@ -4045,54 +4411,77 @@ class TechFixApp(tk.Tk):
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.txn_memo.config(yscrollcommand=scrollbar.set)
 
-        # Options frame with better spacing
-        options_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        options_frame.grid(row=6, column=0, columnspan=5, sticky="we", padx=2, pady=(6, 2))
+        # Options frame - all items in one horizontal row
+        # Combined options and action buttons frame - aligned on same row
+        combined_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
+        combined_frame.grid(row=6, column=0, columnspan=5, sticky="ew", padx=2, pady=(6, 6))
         
-        # Configure options frame columns
-        options_frame.columnconfigure(0, weight=1)
+        # Configure combined frame columns - options on left, buttons on right
+        combined_frame.columnconfigure(0, weight=1)  # Options container
+        combined_frame.columnconfigure(1, weight=0)  # Button container
+        combined_frame.rowconfigure(0, weight=0)
         
-        # Left side options with better spacing
-        options_container = ttk.Frame(options_frame, style="Techfix.Surface.TFrame")
-        options_container.pack(fill=tk.X, expand=True)
+        # Options container - all items in one horizontal row
+        options_container = ttk.Frame(combined_frame, style="Techfix.Surface.TFrame")
+        options_container.grid(row=0, column=0, sticky="w", padx=0, pady=2)
+        
+        # Configure options container columns for horizontal layout
+        options_container.columnconfigure(0, weight=0)
+        options_container.columnconfigure(1, weight=0)
+        options_container.columnconfigure(2, weight=0)
+        options_container.columnconfigure(3, weight=0)
+        options_container.rowconfigure(0, weight=0)
         
         self.txn_is_adjust = tk.IntVar(value=0)
-        ttk.Checkbutton(
+        self.adjust_cb = ttk.Checkbutton(
             options_container, 
             text="Adjusting Entry", 
             variable=self.txn_is_adjust, 
             style="Techfix.TCheckbutton"
-        ).pack(side=tk.LEFT, padx=(0, 16), pady=2)
+        )
+        self.adjust_cb.grid(row=0, column=0, padx=(0, 16), pady=2, sticky="w")
 
         self.txn_schedule_reverse = tk.IntVar(value=0)
-        ttk.Checkbutton(
+        self.reverse_cb = ttk.Checkbutton(
             options_container,
             text="Schedule Reversal",
             variable=self.txn_schedule_reverse,
             style="Techfix.TCheckbutton",
             command=lambda: self._on_schedule_reverse_toggle()
-        ).pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        )
+        self.reverse_cb.grid(row=0, column=1, padx=(0, 8), pady=2, sticky="w")
 
-        ttk.Label(options_container, text="Reverse Date:").pack(side=tk.LEFT, padx=(0, 4), pady=2)
+        self.reverse_label = ttk.Label(options_container, text="Reverse Date:")
+        self.reverse_label.grid(row=0, column=2, padx=(0, 4), pady=2, sticky="w")
         self.txn_reverse_date = ttk.Entry(options_container, width=12, style="Techfix.TEntry")
-        self.txn_reverse_date.pack(side=tk.LEFT, pady=2)
+        self.txn_reverse_date.grid(row=0, column=3, pady=2, sticky="w")
+        
+        # Store references for responsive layout
+        self.options_container = options_container
         try:
             # Disabled until Schedule Reversal is checked
             self.txn_reverse_date.configure(state='disabled')
         except Exception:
             pass
 
-        # Action buttons - better spacing with fixed layout
-        action_frame = ttk.Frame(form, style="Techfix.Surface.TFrame")
-        action_frame.grid(row=7, column=0, columnspan=5, sticky="ew", padx=2, pady=(8, 6))
+        # Action buttons - responsive layout that adapts to available space
+        action_frame = ttk.Frame(combined_frame, style="Techfix.Surface.TFrame")
+        action_frame.grid(row=0, column=1, sticky="e", padx=0, pady=2)
         
-        # Configure action frame columns - ensure buttons stay visible
-        action_frame.columnconfigure(0, weight=1)  # Spacer on left
-        action_frame.columnconfigure(1, weight=0)  # Button container - fixed width
+        # Configure action frame - buttons container directly
+        action_frame.columnconfigure(0, weight=0)
+        action_frame.rowconfigure(0, weight=0)
         
-        # Button container with consistent spacing - use grid instead of pack for better control
+        # Button container - configured for responsive wrapping to multiple rows
         btn_container = ttk.Frame(action_frame, style="Techfix.Surface.TFrame")
-        btn_container.grid(row=0, column=1, sticky="e")
+        btn_container.grid(row=0, column=0, sticky="e")
+        
+        # Configure button container for horizontal layout (single row)
+        btn_container.columnconfigure(0, weight=0)
+        btn_container.columnconfigure(1, weight=0)
+        btn_container.columnconfigure(2, weight=0)
+        btn_container.columnconfigure(3, weight=0)
+        btn_container.rowconfigure(0, weight=0)
         
         # Common button style with fixed width
         button_style = {
@@ -4102,77 +4491,26 @@ class TechFixApp(tk.Tk):
         }
         
         # Use grid for buttons to ensure they stay visible and don't stretch
+        self.btn_recent = ttk.Button(btn_container, text="Recent Transactions", command=self._open_recent_transactions_window, **button_style)
+        self.btn_recent.grid(row=0, column=0, padx=(0, 6), pady=2, sticky="")
+        
         self.btn_clear = ttk.Button(btn_container, text="Clear Form", command=self._clear_transaction_form, **button_style)
-        self.btn_clear.grid(row=0, column=0, padx=(8, 0), pady=2, sticky="e")
+        self.btn_clear.grid(row=0, column=1, padx=6, pady=2, sticky="")
         
         self.btn_draft = ttk.Button(btn_container, text="Save Draft", command=lambda: self._record_transaction("draft"), **button_style)
-        self.btn_draft.grid(row=0, column=1, padx=6, pady=2, sticky="e")
+        self.btn_draft.grid(row=0, column=2, padx=6, pady=2, sticky="")
         
         self.btn_post = ttk.Button(btn_container, text="Record & Post", command=lambda: self._record_transaction("posted"), **button_style)
-        self.btn_post.grid(row=0, column=2, pady=2, sticky="e")
+        self.btn_post.grid(row=0, column=3, padx=(6, 0), pady=2, sticky="")
         
-        # Configure button container columns to prevent stretching
-        btn_container.columnconfigure(0, weight=0)
-        btn_container.columnconfigure(1, weight=0)
-        btn_container.columnconfigure(2, weight=0)
+        # Store reference for responsive layout updates
+        self.action_frame = action_frame
+        self.btn_container = btn_container
         try:
             self._update_post_buttons_enabled()
         except Exception:
             pass
 
-        # --- Recent Transactions area (right pane) ---
-        recent_wrap = ttk.Labelframe(right_panel, text="Recent Transactions", style="Techfix.TLabelframe")
-        recent_wrap.pack(fill=tk.BOTH, expand=True, padx=(6, 0), pady=0)
-        recent_wrap.columnconfigure(0, weight=1)
-        recent_wrap.rowconfigure(1, weight=1)
-        controls = ttk.Frame(recent_wrap, style="Techfix.Surface.TFrame")
-        controls.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Button(controls, text="Refresh", command=lambda: self._load_recent_transactions(), style="Techfix.TButton").pack(side=tk.LEFT)
-        ttk.Button(controls, text="Delete Selected", command=self._delete_selected_transaction, style="Techfix.Danger.TButton").pack(side=tk.LEFT, padx=(6,0))
-        tree_frame = ttk.Frame(recent_wrap, style="Techfix.Surface.TFrame")
-        tree_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=6)
-
-        cols = ("date", "reference", "description", "debit", "credit", "account")
-        self.txn_recent_tree = ttk.Treeview(
-            tree_frame,
-            columns=cols,
-            show="headings",
-            style="Techfix.Treeview",
-            selectmode="browse",
-        )
-        # Headings
-        self.txn_recent_tree.heading("date", text="Date")
-        self.txn_recent_tree.heading("reference", text="Ref")
-        self.txn_recent_tree.heading("description", text="Description")
-        self.txn_recent_tree.heading("debit", text="Debit")
-        self.txn_recent_tree.heading("credit", text="Credit")
-        self.txn_recent_tree.heading("account", text="Account")
-
-        # Column sizing - description expands
-        self.txn_recent_tree.column("date", width=100, anchor=tk.W, stretch=False)
-        self.txn_recent_tree.column("reference", width=80, anchor=tk.W, stretch=False)
-        self.txn_recent_tree.column("description", width=520, anchor=tk.W, stretch=True)
-        self.txn_recent_tree.column("debit", width=100, anchor=tk.E, stretch=False)
-        self.txn_recent_tree.column("credit", width=100, anchor=tk.E, stretch=False)
-        self.txn_recent_tree.column("account", width=220, anchor=tk.W, stretch=False)
-
-        # Scrollbars
-        vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.txn_recent_tree.yview)
-        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self.txn_recent_tree.xview)
-        self.txn_recent_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-
-        # Layout
-        self.txn_recent_tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, columnspan=2, sticky="ew")
-        tree_frame.rowconfigure(0, weight=1)
-        tree_frame.columnconfigure(0, weight=1)
-
-        # Load initial recent transactions
-        try:
-            self._load_recent_transactions()
-        except Exception:
-            pass
 
         # Keyboard shortcuts in the Transactions tab
         try:
@@ -4181,6 +4519,240 @@ class TechFixApp(tk.Tk):
             form.bind_all("<Control-KP_Enter>", lambda e: self._record_transaction("posted"))
             form.bind_all("<Control-Shift-Return>", lambda e: self._record_transaction("draft"))
             form.bind_all("<Control-Shift-KP_Enter>", lambda e: self._record_transaction("draft"))
+        except Exception:
+            pass
+
+    def _open_recent_transactions_window(self) -> None:
+        """Open Recent Transactions in a separate window."""
+        try:
+            # Check if window already exists
+            if hasattr(self, '_recent_txn_window') and self._recent_txn_window.winfo_exists():
+                try:
+                    self._recent_txn_window.lift()
+                    self._recent_txn_window.focus()
+                    return
+                except Exception:
+                    pass
+            
+            # Create new window
+            window = tk.Toplevel(self)
+            window.title("Recent Transactions")
+            window.geometry("1000x600")
+            window.configure(bg=self.palette["surface_bg"])
+            
+            # Make window appear on top and focus it
+            window.lift()
+            window.focus_force()
+            window.attributes('-topmost', True)
+            window.after_idle(lambda: window.attributes('-topmost', False))
+            
+            # Store reference
+            self._recent_txn_window = window
+            
+            # Main container
+            main_frame = ttk.Frame(window, style="Techfix.Surface.TFrame")
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+            main_frame.columnconfigure(0, weight=1)
+            main_frame.rowconfigure(1, weight=1)
+            
+            # Controls frame
+            controls = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            controls.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 6))
+            controls.columnconfigure(0, weight=1)  # Spacer
+            
+            # Left side buttons
+            left_buttons = ttk.Frame(controls, style="Techfix.Surface.TFrame")
+            left_buttons.pack(side=tk.LEFT)
+            ttk.Button(left_buttons, text="Refresh", command=self._load_recent_transactions_window, style="Techfix.TButton").pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(left_buttons, text="Delete Selected", command=self._delete_selected_transaction_window, style="Techfix.Danger.TButton").pack(side=tk.LEFT)
+            
+            # Close button on the right
+            def on_close():
+                try:
+                    if hasattr(self, '_recent_txn_window'):
+                        del self._recent_txn_window
+                except Exception:
+                    pass
+                window.destroy()
+            
+            ttk.Button(controls, text="Close", command=on_close, style="Techfix.TButton").pack(side=tk.RIGHT)
+            
+            # Tree frame
+            tree_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            tree_frame.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+            tree_frame.columnconfigure(0, weight=1)
+            tree_frame.rowconfigure(0, weight=1)
+            
+            # Create treeview
+            cols = ("date", "reference", "description", "debit", "credit", "account")
+            txn_tree = ttk.Treeview(
+                tree_frame,
+                columns=cols,
+                show="headings",
+                style="Techfix.Treeview",
+                selectmode="browse",
+            )
+            
+            # Headings
+            txn_tree.heading("date", text="Date")
+            txn_tree.heading("reference", text="Ref")
+            txn_tree.heading("description", text="Description")
+            txn_tree.heading("debit", text="Debit")
+            txn_tree.heading("credit", text="Credit")
+            txn_tree.heading("account", text="Account")
+            
+            # Column sizing - description expands
+            txn_tree.column("date", width=100, anchor=tk.W, stretch=False)
+            txn_tree.column("reference", width=80, anchor=tk.W, stretch=False)
+            txn_tree.column("description", width=400, anchor=tk.W, stretch=True)
+            txn_tree.column("debit", width=100, anchor=tk.E, stretch=False)
+            txn_tree.column("credit", width=100, anchor=tk.E, stretch=False)
+            txn_tree.column("account", width=200, anchor=tk.W, stretch=False)
+            
+            # Scrollbars
+            vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=txn_tree.yview)
+            hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=txn_tree.xview)
+            txn_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            
+            # Layout
+            txn_tree.grid(row=0, column=0, sticky="nsew")
+            vsb.grid(row=0, column=1, sticky="ns")
+            hsb.grid(row=1, column=0, columnspan=2, sticky="ew")
+            
+            # Store tree reference for this window
+            window.txn_tree = txn_tree
+            
+            # Load transactions
+            self._load_recent_transactions_window(tree=txn_tree)
+            
+            # Handle window close via X button
+            window.protocol("WM_DELETE_WINDOW", on_close)
+            
+        except Exception as e:
+            try:
+                messagebox.showerror("Error", f"Failed to open Recent Transactions window: {e}")
+            except Exception:
+                pass
+
+    def _load_recent_transactions_window(self, tree=None, limit: int = 50) -> None:
+        """Load recent transactions into the window's treeview."""
+        try:
+            if tree is None:
+                # Try to get tree from window
+                if hasattr(self, '_recent_txn_window') and hasattr(self._recent_txn_window, 'txn_tree'):
+                    tree = self._recent_txn_window.txn_tree
+                else:
+                    return
+            
+            # Clear existing items
+            for it in tree.get_children():
+                tree.delete(it)
+            
+            conn = self.engine.conn
+            pid = self.engine.current_period_id
+            clause = "WHERE je.period_id = ?" if pid else ""
+            params = ([int(pid)] if pid else []) + [limit]
+            sql = (
+                """
+                SELECT je.id AS entry_id, je.date AS date, je.description AS description, je.status AS status
+                FROM journal_entries je
+                """
+                + (clause or "")
+                + """
+                ORDER BY date(je.date) DESC, je.id DESC
+                LIMIT ?
+                """
+            )
+            cur = conn.execute(sql, params)
+            entries = cur.fetchall()
+            for e in entries:
+                eid = e['entry_id'] if 'entry_id' in e.keys() else e['id']
+                date = e['date'] if 'date' in e.keys() else ''
+                desc = e['description'] if 'description' in e.keys() else ''
+                # Aggregate debit/credit and pick a representative account name (first line)
+                try:
+                    rsum = conn.execute(
+                        """
+                        SELECT COALESCE(SUM(jl.debit),0) AS debit, COALESCE(SUM(jl.credit),0) AS credit
+                        FROM journal_lines jl
+                        WHERE jl.entry_id=?
+                        """,
+                        (eid,)
+                    ).fetchone()
+                    debit = float(rsum['debit'] if 'debit' in rsum.keys() else 0) if rsum else 0.0
+                    credit = float(rsum['credit'] if 'credit' in rsum.keys() else 0) if rsum else 0.0
+                    racct = conn.execute(
+                        """
+                        SELECT a.name
+                        FROM journal_lines jl
+                        JOIN accounts a ON a.id = jl.account_id
+                        WHERE jl.entry_id=?
+                        ORDER BY jl.id
+                        LIMIT 1
+                        """,
+                        (eid,)
+                    ).fetchone()
+                    acct = (racct['name'] if racct and 'name' in racct.keys() else '')
+                except Exception:
+                    debit = credit = 0.0
+                    acct = ''
+                
+                # Get reference
+                ref = conn.execute("SELECT doc_ref FROM journal_entries WHERE id=?", (eid,)).fetchone()
+                ref_str = (ref['doc_ref'] if ref and 'doc_ref' in ref.keys() else '') or ''
+                
+                # Format amounts
+                debit_str = f"{debit:,.2f}" if debit > 0 else ""
+                credit_str = f"{credit:,.2f}" if credit > 0 else ""
+                
+                tree.insert("", "end", iid=f"entry_{eid}", values=(date, ref_str, desc, debit_str, credit_str, acct))
+        except Exception:
+            pass
+
+    def _delete_selected_transaction_window(self) -> None:
+        """Delete selected transaction from the window."""
+        try:
+            if not hasattr(self, '_recent_txn_window') or not hasattr(self._recent_txn_window, 'txn_tree'):
+                return
+            
+            tree = self._recent_txn_window.txn_tree
+            sel = tree.selection()
+            if not sel:
+                messagebox.showinfo("Delete", "Select a transaction to delete.")
+                return
+            
+            item = sel[0]
+            vals = tree.item(item, 'values')
+            try:
+                # Extract entry_id from iid or values
+                iid = tree.item(item, 'iid')
+                if iid.startswith('entry_'):
+                    entry_id = int(iid.split('_')[1])
+                else:
+                    entry_id = None
+            except Exception:
+                entry_id = None
+            
+            if not entry_id:
+                messagebox.showerror("Delete", "Could not determine the selected transaction ID.")
+                return
+            
+            if not messagebox.askyesno("Confirm Delete", f"Delete transaction #{entry_id}? This cannot be undone."):
+                return
+            
+            conn = self.engine.conn
+            try:
+                conn.execute("DELETE FROM journal_entries WHERE id=?", (entry_id,))
+                conn.commit()
+            except Exception as e:
+                messagebox.showerror("Delete Failed", f"Error deleting transaction: {e}")
+                return
+            
+            # Reload transactions in window
+            try:
+                self._load_recent_transactions_window(tree=tree)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -4641,21 +5213,39 @@ class TechFixApp(tk.Tk):
         """Build the journal entries tab with a list of all journal entries."""
         frame = self.tab_journal
 
-        # Create a frame for the toolbar
+        # Create a frame for the toolbar - use grid for responsive layout
         toolbar = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         toolbar.pack(fill=tk.X, padx=4, pady=4)
+        
+        # Configure toolbar grid for responsive wrapping
+        toolbar.columnconfigure(0, weight=0)  # Left buttons
+        toolbar.columnconfigure(1, weight=1)  # Spacer
+        toolbar.columnconfigure(2, weight=0)  # Right filters
+        toolbar.rowconfigure(0, weight=0)
+        toolbar.rowconfigure(1, weight=0)  # Second row for wrapping
+
+        # Left side buttons container
+        left_buttons = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
+        left_buttons.grid(row=0, column=0, sticky="w", padx=2)
+        left_buttons.columnconfigure(0, weight=0)
+        left_buttons.columnconfigure(1, weight=0)
+        left_buttons.columnconfigure(2, weight=0)
+        left_buttons.columnconfigure(3, weight=0)
+        left_buttons.rowconfigure(0, weight=0)
+        left_buttons.rowconfigure(1, weight=0)  # Second row for wrapping
 
         # Add refresh button
         refresh_btn = ttk.Button(
-            toolbar,
+            left_buttons,
             text="Refresh",
             command=self._load_journal_entries,
             style="Techfix.TButton",
         )
-        refresh_btn.pack(side=tk.LEFT, padx=2)
+        refresh_btn.grid(row=0, column=0, padx=2, pady=2, sticky="w")
+        
         # Export to Excel button for journal
         export_btn = ttk.Button(
-            toolbar,
+            left_buttons,
             text="Export to Excel",
             command=lambda: self._export_tree_to_excel(
                 self.journal_tree,
@@ -4663,11 +5253,11 @@ class TechFixApp(tk.Tk):
             ),
             style="Techfix.TButton",
         )
-        export_btn.pack(side=tk.LEFT, padx=2)
+        export_btn.grid(row=0, column=1, padx=2, pady=2, sticky="w")
 
         # Simple paging controls
-        paging_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
-        paging_frame.pack(side=tk.LEFT, padx=6)
+        paging_frame = ttk.Frame(left_buttons, style="Techfix.Surface.TFrame")
+        paging_frame.grid(row=0, column=2, padx=6, pady=2, sticky="w")
         self.journal_page_label = ttk.Label(paging_frame, text="Page 1", style="Techfix.TLabel")
         self.journal_page_label.pack(side=tk.LEFT, padx=(0, 4))
         prev_btn = ttk.Button(
@@ -4685,18 +5275,34 @@ class TechFixApp(tk.Tk):
         prev_btn.pack(side=tk.LEFT, padx=2)
         next_btn.pack(side=tk.LEFT, padx=2)
 
-        # Add filter controls
+        # Add filter controls - use grid for responsive layout
         filter_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
-        filter_frame.pack(side=tk.RIGHT, padx=4)
+        filter_frame.grid(row=0, column=2, sticky="e", padx=4)
+        filter_frame.columnconfigure(0, weight=0)
+        filter_frame.columnconfigure(1, weight=0)
+        filter_frame.columnconfigure(2, weight=0)
+        filter_frame.columnconfigure(3, weight=0)
+        filter_frame.columnconfigure(4, weight=0)
+        filter_frame.rowconfigure(0, weight=0)
+        filter_frame.rowconfigure(1, weight=0)  # Second row for wrapping
+        
+        # Store references for responsive layout
+        self.journal_toolbar = toolbar
+        self.journal_left_buttons = left_buttons
+        self.journal_refresh_btn = refresh_btn
+        self.journal_export_btn = export_btn
+        self.journal_filter_frame = filter_frame
 
-        ttk.Label(filter_frame, text="Filter by:", style="Techfix.TLabel").pack(side=tk.LEFT, padx=4)
+        filter_label = ttk.Label(filter_frame, text="Filter by:", style="Techfix.TLabel")
+        filter_label.grid(row=0, column=0, padx=4, pady=2, sticky="w")
 
         # Date range filter
         self.journal_date_from = ttk.Entry(filter_frame, width=10, style="Techfix.TEntry")
-        self.journal_date_from.pack(side=tk.LEFT, padx=2)
-        ttk.Label(filter_frame, text="to", style="Techfix.TLabel").pack(side=tk.LEFT)
+        self.journal_date_from.grid(row=0, column=1, padx=2, pady=2, sticky="w")
+        to_label = ttk.Label(filter_frame, text="to", style="Techfix.TLabel")
+        to_label.grid(row=0, column=2, padx=2, pady=2, sticky="w")
         self.journal_date_to = ttk.Entry(filter_frame, width=10, style="Techfix.TEntry")
-        self.journal_date_to.pack(side=tk.LEFT, padx=2)
+        self.journal_date_to.grid(row=0, column=3, padx=2, pady=2, sticky="w")
 
         # Account filter
         self.journal_account_filter = ttk.Combobox(
@@ -4705,7 +5311,11 @@ class TechFixApp(tk.Tk):
             state="readonly",
             style="Techfix.TCombobox",
         )
-        self.journal_account_filter.pack(side=tk.LEFT, padx=4)
+        self.journal_account_filter.grid(row=0, column=4, padx=4, pady=2, sticky="w")
+        
+        # Store filter widget references for responsive layout
+        self.journal_filter_label = filter_label
+        self.journal_to_label = to_label
         try:
             accs = db.get_accounts(conn=self.engine.conn)
             names = ["All"] + [f"{a['code']} - {a['name']}" for a in accs]
@@ -5060,23 +5670,43 @@ class TechFixApp(tk.Tk):
         toolbar = ttk.Frame(frame, style="Techfix.Surface.TFrame")
         toolbar.pack(fill=tk.X, padx=4, pady=4)
 
+        # Configure toolbar grid for responsive layout
+        toolbar.columnconfigure(0, weight=0)  # Left buttons
+        toolbar.columnconfigure(1, weight=1)  # Spacer
+        toolbar.columnconfigure(2, weight=0)  # Right filters
+        toolbar.rowconfigure(0, weight=0)
+        toolbar.rowconfigure(1, weight=0)  # Second row for wrapping
+
+        # Left side buttons container
+        left_buttons = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
+        left_buttons.grid(row=0, column=0, sticky="w", padx=2)
+        left_buttons.columnconfigure(0, weight=0)
+        left_buttons.columnconfigure(1, weight=0)
+        left_buttons.columnconfigure(2, weight=0)
+        left_buttons.columnconfigure(3, weight=0)
+        left_buttons.rowconfigure(0, weight=0)
+        left_buttons.rowconfigure(1, weight=0)  # Second row for wrapping
+
         # Add refresh button
         refresh_btn = ttk.Button(
-            toolbar,
+            left_buttons,
             text="Refresh",
             command=self._load_ledger_entries,
             style="Techfix.TButton",
         )
-        refresh_btn.pack(side=tk.LEFT, padx=2)
-        ttk.Button(
-            toolbar,
+        refresh_btn.grid(row=0, column=0, padx=2, pady=2, sticky="w")
+        
+        post_btn = ttk.Button(
+            left_buttons,
             text="Post to Ledger",
             command=self._post_to_ledger_action,
             style="Techfix.TButton",
-        ).pack(side=tk.LEFT, padx=6)
+        )
+        post_btn.grid(row=0, column=1, padx=6, pady=2, sticky="w")
+        
         # Export ledger to Excel
         export_btn = ttk.Button(
-            toolbar,
+            left_buttons,
             text="Export to Excel",
             command=lambda: self._export_tree_to_excel(
                 self.ledger_tree,
@@ -5084,11 +5714,11 @@ class TechFixApp(tk.Tk):
             ),
             style="Techfix.TButton",
         )
-        export_btn.pack(side=tk.LEFT, padx=6)
+        export_btn.grid(row=0, column=2, padx=6, pady=2, sticky="w")
 
         # Simple paging controls
-        paging_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
-        paging_frame.pack(side=tk.LEFT, padx=6)
+        paging_frame = ttk.Frame(left_buttons, style="Techfix.Surface.TFrame")
+        paging_frame.grid(row=0, column=3, padx=6, pady=2, sticky="w")
         self.ledger_page_label = ttk.Label(paging_frame, text="Page 1", style="Techfix.TLabel")
         self.ledger_page_label.pack(side=tk.LEFT, padx=(0, 4))
         prev_btn = ttk.Button(
@@ -5106,18 +5736,34 @@ class TechFixApp(tk.Tk):
         prev_btn.pack(side=tk.LEFT, padx=2)
         next_btn.pack(side=tk.LEFT, padx=2)
 
-        # Add account filter
+        # Add account filter - use grid for responsive layout
         filter_frame = ttk.Frame(toolbar, style="Techfix.Surface.TFrame")
-        filter_frame.pack(side=tk.RIGHT, padx=4)
+        filter_frame.grid(row=0, column=2, sticky="e", padx=4)
+        filter_frame.columnconfigure(0, weight=0)
+        filter_frame.columnconfigure(1, weight=0)
+        filter_frame.rowconfigure(0, weight=0)
+        filter_frame.rowconfigure(1, weight=0)  # Second row for wrapping
+        
+        # Store references for responsive layout
+        self.ledger_toolbar = toolbar
+        self.ledger_left_buttons = left_buttons
+        self.ledger_refresh_btn = refresh_btn
+        self.ledger_post_btn = post_btn
+        self.ledger_export_btn = export_btn
+        self.ledger_filter_frame = filter_frame
 
-        ttk.Label(filter_frame, text="Account:", style="Techfix.TLabel").pack(side=tk.LEFT, padx=4)
+        account_label = ttk.Label(filter_frame, text="Account:", style="Techfix.TLabel")
+        account_label.grid(row=0, column=0, padx=4, pady=2, sticky="w")
         self.ledger_account_filter = ttk.Combobox(
             filter_frame,
             width=30,
             state="readonly",
             style="Techfix.TCombobox",
         )
-        self.ledger_account_filter.pack(side=tk.LEFT, padx=4)
+        self.ledger_account_filter.grid(row=0, column=1, padx=4, pady=2, sticky="w")
+        
+        # Store filter widget reference
+        self.ledger_account_label = account_label
         self.ledger_account_filter.bind("<<ComboboxSelected>>", lambda e: self._load_ledger_entries())
         try:
             accs = db.get_accounts(conn=self.engine.conn)
@@ -6606,9 +7252,17 @@ class TechFixApp(tk.Tk):
         today = datetime.date.today().strftime("%Y-%m-%d")
         self.fs_date_to.insert(0, today)
         
-        # Action buttons + presets
+        # Action buttons + presets - use grid for responsive layout
         btn_frame = ttk.Frame(controls, style="Techfix.Surface.TFrame")
         btn_frame.pack(side=tk.RIGHT)
+        
+        # Configure btn_frame for responsive wrapping
+        btn_frame.columnconfigure(0, weight=0)
+        btn_frame.columnconfigure(1, weight=0)
+        btn_frame.columnconfigure(2, weight=0)
+        btn_frame.columnconfigure(3, weight=0)
+        btn_frame.rowconfigure(0, weight=0)
+        btn_frame.rowconfigure(1, weight=0)  # Second row for wrapping
 
         # Preset selector (e.g. Last Month, YTD)
         preset_var = tk.StringVar(value="Custom")
@@ -6621,7 +7275,7 @@ class TechFixApp(tk.Tk):
             values=["Custom", "This Month", "Last Month", "Year to Date"],
             style="Techfix.TCombobox",
         )
-        preset_box.pack(side=tk.LEFT, padx=(0, 4))
+        preset_box.grid(row=0, column=0, padx=(0, 4), pady=2, sticky="w")
 
         def _apply_preset(name: str) -> None:
             try:
@@ -6662,7 +7316,7 @@ class TechFixApp(tk.Tk):
             command=self._load_financials, 
             style="Techfix.TButton"
         )
-        run_btn.pack(side=tk.LEFT, padx=4)
+        run_btn.grid(row=0, column=1, padx=4, pady=2, sticky="w")
         
         export_xls_btn = ttk.Button(
             btn_frame,
@@ -6670,7 +7324,7 @@ class TechFixApp(tk.Tk):
             command=self._export_fs,
             style="Techfix.TButton"
         )
-        export_xls_btn.pack(side=tk.LEFT, padx=4)
+        export_xls_btn.grid(row=0, column=2, padx=4, pady=2, sticky="w")
         
         export_txt_btn = ttk.Button(
             btn_frame,
@@ -6678,7 +7332,14 @@ class TechFixApp(tk.Tk):
             command=self._export_financials,
             style="Techfix.TButton"
         )
-        export_txt_btn.pack(side=tk.LEFT, padx=4)
+        export_txt_btn.grid(row=0, column=3, padx=4, pady=2, sticky="w")
+        
+        # Store references for responsive layout
+        self.fs_btn_frame = btn_frame
+        self.fs_preset_box = preset_box
+        self.fs_run_btn = run_btn
+        self.fs_export_xls_btn = export_xls_btn
+        self.fs_export_txt_btn = export_txt_btn
         
         # Create notebook for different financial statements
         self.fs_notebook = ttk.Notebook(frame, style="Techfix.TNotebook")

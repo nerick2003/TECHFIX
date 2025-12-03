@@ -1,7 +1,14 @@
-openpyxl>=3.1.0
-reportlab>=4.0.0
+# Core dependencies
+Pillow>=10.0.0
+
+# Barcode and QR code generation
+python-barcode>=0.15.1
+qrcode>=7.4.2
+
+# Image processing and scanning
 opencv-python>=4.9.0
 pyzbar>=0.1.9
-Pillow>=10.0.0
-qrcode>=7.4.2
-python-barcode>=0.15.1
+
+# Document generation and export
+openpyxl>=3.1.0
+reportlab>=4.0.0
