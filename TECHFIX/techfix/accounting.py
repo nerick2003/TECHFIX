@@ -82,7 +82,12 @@ class AccountingEngine:
         attachments: Optional[Sequence[Tuple[str, str]]] = None,
         schedule_reverse_on: Optional[str] = None,
     ) -> int:
-        line_tuples = [ln.as_tuple() for ln in lines]
+        # Validate that entry has at least one line
+        line_list = list(lines)
+        if not line_list:
+            raise ValueError("Journal entry must have at least one line (debit or credit).")
+        
+        line_tuples = [ln.as_tuple() for ln in line_list]
         period = period_id or self.current_period_id
         # Core validation: ensure an active, open period and a date within bounds (if defined)
         if not period:
@@ -286,14 +291,23 @@ class AccountingEngine:
         if not acc_supplies or not acc_supplies_exp:
             return None
         # Compute current balance in Supplies (debit minus credit)
+        # Only include posted entries from current period for accurate calculation
+        params = [acc_supplies["id"]]
+        period_filter = ""
+        if self.current_period_id:
+            period_filter = " AND (je.period_id = ? OR je.period_id IS NULL)"
+            params.append(self.current_period_id)
+        
         cur = self.conn.execute(
-            """
+            f"""
             SELECT COALESCE(SUM(debit) - SUM(credit), 0) AS balance
             FROM journal_lines jl
             JOIN journal_entries je ON je.id = jl.entry_id
             WHERE jl.account_id = ?
+              AND (je.status = 'posted' OR je.status IS NULL)
+              {period_filter}
             """,
-            (acc_supplies["id"],),
+            tuple(params),
         )
         current_balance = float(cur.fetchone()["balance"])
         used = round(current_balance - remaining_supplies_amount, 2)
@@ -358,13 +372,20 @@ class AccountingEngine:
         capital_id = capital["id"]
 
         # Close Revenues (handle both normal and unexpected balances)
+        # Exclude closing entries and reversing entries to prevent double-counting
+        # Only include posted entries for accurate calculation
         cur = self.conn.execute(
             """
             SELECT a.id, a.name, ROUND(COALESCE(SUM(jl.credit) - SUM(jl.debit),0),2) AS balance
             FROM accounts a
             LEFT JOIN journal_lines jl ON jl.account_id = a.id
             LEFT JOIN journal_entries je ON je.id = jl.entry_id
-            WHERE a.type = 'Revenue' AND a.is_active=1 AND je.period_id = ?
+            WHERE a.type = 'Revenue' 
+              AND a.is_active=1 
+              AND je.period_id = ?
+              AND (je.status = 'posted' OR je.status IS NULL)
+              AND (je.is_closing = 0 OR je.is_closing IS NULL)
+              AND (je.is_reversing = 0 OR je.is_reversing IS NULL)
             GROUP BY a.id, a.code, a.name
             HAVING ABS(balance) > 0.005
             """,
@@ -404,13 +425,20 @@ class AccountingEngine:
                 )
 
         # Close Expenses (handle both debit and unexpected credit balances)
+        # Exclude closing entries and reversing entries to prevent double-counting
+        # Only include posted entries for accurate calculation
         cur = self.conn.execute(
             """
             SELECT a.id, a.name, ROUND(COALESCE(SUM(jl.debit) - SUM(jl.credit),0),2) AS balance
             FROM accounts a
             LEFT JOIN journal_lines jl ON jl.account_id = a.id
             LEFT JOIN journal_entries je ON je.id = jl.entry_id
-            WHERE a.type = 'Expense' AND a.is_active=1 AND je.period_id = ?
+            WHERE a.type = 'Expense' 
+              AND a.is_active=1 
+              AND je.period_id = ?
+              AND (je.status = 'posted' OR je.status IS NULL)
+              AND (je.is_closing = 0 OR je.is_closing IS NULL)
+              AND (je.is_reversing = 0 OR je.is_reversing IS NULL)
             GROUP BY a.id, a.code, a.name
             HAVING ABS(balance) > 0.005
             """,
@@ -450,6 +478,8 @@ class AccountingEngine:
                 )
 
         # Close Drawings (if present) to Capital
+        # Exclude closing entries to prevent double-counting
+        # Only include posted entries for accurate calculation
         drawings = db.get_account_by_name("Owner's Drawings", self.conn)
         if drawings:
             cur = self.conn.execute(
@@ -457,7 +487,10 @@ class AccountingEngine:
                 SELECT ROUND(COALESCE(SUM(debit) - SUM(credit),0),2) AS balance
                 FROM journal_lines jl
                 JOIN journal_entries je ON je.id = jl.entry_id
-                WHERE jl.account_id = ? AND je.period_id = ?
+                WHERE jl.account_id = ? 
+                  AND je.period_id = ?
+                  AND (je.status = 'posted' OR je.status IS NULL)
+                  AND (je.is_closing = 0 OR je.is_closing IS NULL)
                 """,
                 (drawings["id"], self.current_period_id),
             )
@@ -717,16 +750,28 @@ class AccountingEngine:
             "difference": diff,
         }
 
-    def generate_income_statement(self, start_date: str, end_date: str) -> Dict[str, object]:
+    def generate_income_statement(self, start_date: str, end_date: str, *, period_id: Optional[int] = None) -> Dict[str, object]:
         """
         Simple income statement for a date range based on trial balance activity.
         Uses revenue and expense accounts only.
+        
+        Args:
+            start_date: Start date for the income statement
+            end_date: End date for the income statement
+            period_id: Optional period ID to filter by. If None, uses current_period_id.
+                       If you want to include entries from all periods, pass period_id=None
+                       explicitly after ensuring date ranges are set.
         """
+        # If period_id is explicitly None, don't filter by period (allows cross-period reporting)
+        # Otherwise, use current_period_id as default
+        filter_period_id = period_id if period_id is not None else self.current_period_id
+        
         rows = db.compute_trial_balance(
             from_date=start_date,
             up_to_date=end_date,
             include_temporary=True,
-            period_id=self.current_period_id,
+            period_id=filter_period_id,
+            exclude_closing=True,  # Exclude closing entries to show revenue/expenses before closing
             conn=self.conn,
         )
         revenue_items: List[Dict[str, object]] = []
@@ -738,16 +783,30 @@ class AccountingEngine:
             net_debit = float(r["net_debit"] or 0.0)
             net_credit = float(r["net_credit"] or 0.0)
             if acc_type == "revenue":
+                # Revenue accounts: credit balance increases revenue
                 amount = round(net_credit - net_debit, 2)
                 if abs(amount) > 0.005:
                     revenue_items.append(
                         {
                             "code": r["code"],
                             "name": r["name"],
-                            "amount": amount,
+                            "amount": amount,  # Positive for revenue, negative for contra-revenue
                         }
                     )
                     total_revenue += amount
+            elif acc_type == "contra revenue":
+                # Contra-revenue accounts (e.g., Sales Returns, Sales Discounts)
+                # have debit balances and reduce revenue
+                amount = round(net_debit - net_credit, 2)
+                if abs(amount) > 0.005:
+                    revenue_items.append(
+                        {
+                            "code": r["code"],
+                            "name": r["name"],
+                            "amount": -abs(amount),  # Always show as negative
+                        }
+                    )
+                    total_revenue -= abs(amount)  # Subtract from total revenue
             elif acc_type == "expense":
                 amount = round(net_debit - net_credit, 2)
                 if abs(amount) > 0.005:
@@ -793,28 +852,109 @@ class AccountingEngine:
             acc_type = (r["type"] or "").lower()
             net_debit = float(r["net_debit"] or 0.0)
             net_credit = float(r["net_credit"] or 0.0)
-            balance = net_debit - net_credit
-            amount = round(balance, 2)
-            if abs(amount) <= 0.005:
-                continue
-            line = {
-                "code": r["code"],
-                "name": r["name"],
-                "amount": amount,
-            }
-            if acc_type in ("asset", "contra asset"):
+            
+            if acc_type == "asset":
+                # Assets have debit balances (positive)
+                balance = net_debit - net_credit
+                amount = round(balance, 2)
+                if abs(amount) <= 0.005:
+                    continue
+                # Handle negative asset balances (shouldn't happen normally, but can occur)
+                # Negative balances reduce total assets
+                line = {
+                    "code": r["code"],
+                    "name": r["name"],
+                    "amount": amount,  # Can be negative
+                }
                 assets.append(line)
-                total_assets += amount
+                total_assets += amount  # Add the amount (negative if balance is negative)
+            elif acc_type == "contra asset":
+                # Contra assets have credit balances and reduce asset value
+                # Use credit balance directly: net_credit - net_debit
+                # This gives us the amount to subtract from total assets
+                credit_balance = net_credit - net_debit
+                amount = round(credit_balance, 2)
+                if abs(amount) <= 0.005:
+                    continue
+                contra_line = {
+                    "code": r["code"],
+                    "name": r["name"],
+                    "amount": -amount,  # Show as negative (reduces assets)
+                }
+                assets.append(contra_line)
+                total_assets -= amount  # Subtract credit balance from total assets
             elif acc_type == "liability":
+                # Liabilities have credit balances (positive on balance sheet)
+                balance = net_credit - net_debit
+                amount = round(balance, 2)
+                
+                # If liability has a debit balance (overpayment), treat as prepaid asset
+                if amount < 0:
+                    # This is an overpayment - treat as prepaid asset
+                    prepaid_amount = abs(amount)
+                    prepaid_line = {
+                        "code": r["code"],
+                        "name": f"Prepaid ({r['name']})",
+                        "amount": prepaid_amount,
+                    }
+                    assets.append(prepaid_line)
+                    total_assets += prepaid_amount
+                    # Don't include in liabilities
+                    continue
+                
+                if abs(amount) <= 0.005:
+                    continue
+                line = {
+                    "code": r["code"],
+                    "name": r["name"],
+                    "amount": amount,
+                }
                 liabilities.append(line)
                 total_liabilities += amount
             elif acc_type == "equity":
+                account_name = r["name"]
+                
+                # Special handling for Owner's Drawings - it should REDUCE equity, not increase it
+                # Drawings have debit balances (positive), so they reduce the credit balance of equity
+                # Check for drawings FIRST before calculating normal balance
+                if "drawing" in account_name.lower() or "withdrawal" in account_name.lower():
+                    # Drawings have debit balances, so net_debit - net_credit gives us the drawings amount
+                    drawings_amount = round(net_debit - net_credit, 2)
+                    if abs(drawings_amount) > 0.005:
+                        line = {
+                            "code": r["code"],
+                            "name": account_name,
+                            "amount": -abs(drawings_amount),  # Show as NEGATIVE to indicate it reduces equity
+                        }
+                        equity.append(line)
+                        total_equity -= drawings_amount  # Subtract drawings from total equity
+                    # Skip normal processing for drawings
+                    continue
+                
+                # For Owner's Capital and other equity accounts (NOT drawings)
+                # Equity has credit balances (positive on balance sheet)
+                balance = net_credit - net_debit
+                amount = round(balance, 2)
+                if abs(amount) <= 0.005:
+                    continue
+                
+                line = {
+                    "code": r["code"],
+                    "name": account_name,
+                    "amount": amount,
+                }
                 equity.append(line)
                 total_equity += amount
 
         total_assets = round(total_assets, 2)
         total_liabilities = round(total_liabilities, 2)
         total_equity = round(total_equity, 2)
+
+        # Balance check: Assets = Liabilities + Equity
+        # Expanded form: Assets = Liabilities + Owner's Capital + Revenues - Expenses - Withdrawals
+        # After closing entries, Revenues, Expenses, and Withdrawals are zero (closed to Capital)
+        # So: Assets - (Liabilities + Equity) = 0
+        balance_check = round(total_assets - (total_liabilities + total_equity), 2)
 
         return {
             "as_of": as_of,
@@ -824,7 +964,7 @@ class AccountingEngine:
             "total_assets": total_assets,
             "total_liabilities": total_liabilities,
             "total_equity": total_equity,
-            "balance_check": round(total_assets - (total_liabilities + total_equity), 2),
+            "balance_check": balance_check,
         }
 
     def generate_cash_flow(self, start_date: str, end_date: str) -> Dict[str, object]:
@@ -854,6 +994,7 @@ class AccountingEngine:
             SELECT je.id AS entry_id, je.date AS date
             FROM journal_entries je
             WHERE date(je.date) BETWEEN date(?) AND date(?)
+              AND (je.status = 'posted' OR je.status IS NULL)
             """
             + clause
             + """
@@ -877,15 +1018,35 @@ class AccountingEngine:
             non_cash_lines = [l for l in lines if int(l["account_id"]) != cash_id and (l["debit"] or l["credit"])]
             for cl in cash_lines:
                 amt = float(cl["debit"] or 0) - float(cl["credit"] or 0)
-                klass = "Operating"
+                klass = "Operating"  # Default classification
+                
                 if non_cash_lines:
-                    other_id = int(non_cash_lines[0]["account_id"])
-                    acct = self.conn.execute("SELECT type FROM accounts WHERE id=?", (other_id,)).fetchone()
-                    acct_type = acct["type"] if acct else None
-                    if acct_type in ("Asset", "Contra Asset"):
-                        klass = "Investing"
-                    elif acct_type in ("Liability", "Equity"):
-                        klass = "Financing"
+                    # Analyze all non-cash accounts to determine classification
+                    # Use weighted classification based on transaction amounts
+                    account_type_amounts = {}
+                    for line in non_cash_lines:
+                        other_id = int(line["account_id"])
+                        acct = self.conn.execute("SELECT type FROM accounts WHERE id=?", (other_id,)).fetchone()
+                        if acct:
+                            acct_type = acct["type"]
+                            line_amt = abs(float(line["debit"] or 0) - float(line["credit"] or 0))
+                            if acct_type not in account_type_amounts:
+                                account_type_amounts[acct_type] = 0.0
+                            account_type_amounts[acct_type] += line_amt
+                    
+                    # Classify based on dominant account type by amount
+                    if account_type_amounts:
+                        # Priority: Investing > Financing > Operating
+                        investing_total = account_type_amounts.get("Asset", 0) + account_type_amounts.get("Contra Asset", 0)
+                        financing_total = account_type_amounts.get("Liability", 0) + account_type_amounts.get("Equity", 0)
+                        operating_total = account_type_amounts.get("Revenue", 0) + account_type_amounts.get("Expense", 0)
+                        
+                        if investing_total > financing_total and investing_total > operating_total:
+                            klass = "Investing"
+                        elif financing_total > operating_total:
+                            klass = "Financing"
+                        # else: Operating (default)
+                
                 sections[klass].append({
                     "entry_id": eid,
                     "date": self.conn.execute("SELECT date FROM journal_entries WHERE id=?", (eid,)).fetchone()["date"],
@@ -958,6 +1119,344 @@ class AccountingEngine:
 
     def update_adjustment_status(self, adjustment_id: int, status: str, notes: Optional[str] = None) -> None:
         db.update_adjustment_status(adjustment_id, status, notes=notes, conn=self.conn)
+
+    def diagnose_supplies_account_issue(self) -> Dict[str, object]:
+        """
+        Diagnose the Supplies account credit balance issue.
+        Returns a dictionary with details about the issue and recommendations.
+        
+        Common issue: An adjusting entry credited Supplies, but Supplies had no
+        debit balance because purchases were recorded to Supplies Expense instead.
+        OR adjusting entries were incorrectly entered with Supplies as credit account.
+        """
+        if not self.current_period_id:
+            return {"error": "No active accounting period selected"}
+        
+        supplies = db.get_account_by_name("Supplies", self.conn)
+        if not supplies:
+            return {"error": "Supplies account not found"}
+        
+        supplies_id = supplies['id']
+        
+        # Get current balance
+        cur = self.conn.execute("""
+            SELECT 
+                COALESCE(SUM(jl.debit), 0) as total_debit,
+                COALESCE(SUM(jl.credit), 0) as total_credit,
+                COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.credit), 0) as balance
+            FROM journal_lines jl
+            JOIN journal_entries je ON je.id = jl.entry_id
+            WHERE jl.account_id = ?
+              AND je.period_id = ?
+              AND (je.status = 'posted' OR je.status IS NULL)
+        """, (supplies_id, self.current_period_id))
+        
+        result = cur.fetchone()
+        total_debit = float(result['total_debit'] or 0)
+        total_credit = float(result['total_credit'] or 0)
+        balance = float(result['balance'] or 0)
+        
+        # Find all entries affecting Supplies
+        cur = self.conn.execute("""
+            SELECT je.id, je.date, je.description, je.is_adjusting, je.document_ref,
+                   jl.debit, jl.credit
+            FROM journal_lines jl
+            JOIN journal_entries je ON je.id = jl.entry_id
+            WHERE jl.account_id = ?
+              AND je.period_id = ?
+              AND (je.status = 'posted' OR je.status IS NULL)
+            ORDER BY je.date, je.id
+        """, (supplies_id, self.current_period_id))
+        
+        entries = cur.fetchall()
+        
+        # Find problematic adjusting entries and determine what account should have been used
+        problematic_entries = []
+        account_corrections = {
+            "Depreciation expense": "Accumulated Depreciation",
+            "Accrued utilities expense": "Utilities Payable",
+            "Accrued salaries expense": "SSS, PhilHealth, and Pag-Ibig Payable",
+            "Accrued percentage tax": "Accrued Percentage Tax Payable",
+        }
+        
+        for entry in entries:
+            if entry['is_adjusting'] and float(entry['credit'] or 0) > 0:
+                # Determine what account should have been credited based on description
+                correct_account = None
+                desc_lower = (entry['description'] or '').lower()
+                for key, correct_acc in account_corrections.items():
+                    if key.lower() in desc_lower:
+                        correct_account = correct_acc
+                        break
+                
+                problematic_entries.append({
+                    "entry_id": entry['id'],
+                    "date": entry['date'],
+                    "description": entry['description'],
+                    "document_ref": entry['document_ref'],
+                    "credit_amount": float(entry['credit'] or 0),
+                    "should_credit": correct_account or "Unknown (check original entry)",
+                })
+        
+        has_issue = balance < 0
+        
+        return {
+            "account_id": supplies_id,
+            "account_name": "Supplies",
+            "total_debit": total_debit,
+            "total_credit": total_credit,
+            "balance": balance,
+            "has_issue": has_issue,
+            "total_entries": len(entries),
+            "problematic_entries": problematic_entries,
+            "recommendation": (
+                "These adjusting entries incorrectly credited Supplies. "
+                "They should credit different accounts. Delete and re-enter with correct accounts."
+                if has_issue and problematic_entries
+                else "No issue found" if not has_issue
+                else "Check entries affecting Supplies account"
+            ),
+        }
+
+    def fix_supplies_account_entries(self, dry_run: bool = True) -> Dict[str, object]:
+        """
+        Fix adjusting entries that incorrectly credit Supplies account.
+        
+        This method:
+        1. Identifies adjusting entries that incorrectly credit Supplies
+        2. Gets all lines from those entries
+        3. Replaces the Supplies credit with the correct account
+        4. Deletes the incorrect entry and recreates it with the fix
+        
+        Args:
+            dry_run: If True, only return what would be fixed without making changes
+            
+        Returns:
+            Dictionary with:
+            - fixed_count: Number of entries fixed
+            - total_entries: Total problematic entries found
+            - errors: List of errors encountered
+            - fixed_entries: List of entry IDs that were fixed (entry_id -> new_entry_id)
+        """
+        if not self.current_period_id:
+            return {"error": "No active accounting period selected"}
+        
+        # Get diagnosis
+        diagnosis = self.diagnose_supplies_account_issue()
+        
+        if diagnosis.get('error'):
+            return diagnosis
+        
+        if not diagnosis.get('has_issue') or not diagnosis.get('problematic_entries'):
+            return {
+                "fixed_count": 0,
+                "total_entries": 0,
+                "errors": [],
+                "fixed_entries": {},
+                "message": "No problematic entries found. Supplies account is fine."
+            }
+        
+        problematic_entries = diagnosis['problematic_entries']
+        supplies_account = db.get_account_by_name("Supplies", self.conn)
+        if not supplies_account:
+            return {"error": "Supplies account not found"}
+        
+        supplies_id = supplies_account['id']
+        
+        # Process each problematic entry
+        fixed_count = 0
+        errors = []
+        fixed_entries = {}
+        
+        for entry_info in problematic_entries:
+            entry_id = entry_info['entry_id']
+            should_credit_account_name = entry_info['should_credit']
+            
+            # Get the correct account
+            correct_account = db.get_account_by_name(should_credit_account_name, self.conn)
+            if not correct_account:
+                errors.append({
+                    "entry_id": entry_id,
+                    "error": f"Account '{should_credit_account_name}' not found"
+                })
+                continue
+            
+            # Get all lines for this entry
+            cur = self.conn.execute("""
+                SELECT account_id, debit, credit 
+                FROM journal_lines 
+                WHERE entry_id = ?
+                ORDER BY id
+            """, (entry_id,))
+            
+            lines = cur.fetchall()
+            
+            if not lines:
+                errors.append({
+                    "entry_id": entry_id,
+                    "error": "No journal lines found for entry"
+                })
+                continue
+            
+            # Get entry metadata
+            cur = self.conn.execute("""
+                SELECT date, description, is_adjusting, is_closing, is_reversing,
+                       document_ref, external_ref, memo, source_type, status
+                FROM journal_entries
+                WHERE id = ?
+            """, (entry_id,))
+            
+            entry_meta = cur.fetchone()
+            if not entry_meta:
+                errors.append({
+                    "entry_id": entry_id,
+                    "error": "Entry not found"
+                })
+                continue
+            
+            # Rebuild journal lines, replacing Supplies credit with correct account
+            new_lines = []
+            supplies_credit_found = False
+            
+            for line in lines:
+                account_id = line['account_id']
+                debit = float(line['debit'] or 0)
+                credit = float(line['credit'] or 0)
+                
+                if account_id == supplies_id and credit > 0:
+                    # Replace Supplies credit with correct account
+                    new_lines.append(JournalLine(
+                        account_id=correct_account['id'],
+                        debit=0.0,
+                        credit=credit
+                    ))
+                    supplies_credit_found = True
+                else:
+                    # Keep other lines as-is
+                    new_lines.append(JournalLine(
+                        account_id=account_id,
+                        debit=debit,
+                        credit=credit
+                    ))
+            
+            if not supplies_credit_found:
+                errors.append({
+                    "entry_id": entry_id,
+                    "error": "Supplies credit line not found in entry"
+                })
+                continue
+            
+            if dry_run:
+                # In dry run, just track that we would fix it
+                fixed_entries[entry_id] = None
+            else:
+                # Delete old entry (this will cascade delete journal_lines due to foreign key)
+                try:
+                    self.conn.execute("DELETE FROM journal_entries WHERE id = ?", (entry_id,))
+                    
+                    # Recreate entry with corrected lines
+                    new_entry_id = self.record_entry(
+                        date=entry_meta['date'],
+                        description=entry_meta['description'],
+                        lines=new_lines,
+                        is_adjusting=bool(entry_meta['is_adjusting']),
+                        is_closing=bool(entry_meta['is_closing']),
+                        is_reversing=bool(entry_meta['is_reversing']),
+                        document_ref=entry_meta['document_ref'],
+                        external_ref=entry_meta['external_ref'],
+                        memo=entry_meta['memo'],
+                        source_type=entry_meta['source_type'],
+                        status=entry_meta['status'] or 'posted',
+                    )
+                    
+                    self.conn.commit()
+                    fixed_entries[entry_id] = new_entry_id
+                    fixed_count += 1
+                except Exception as e:
+                    errors.append({
+                        "entry_id": entry_id,
+                        "error": str(e)
+                    })
+                    self.conn.rollback()
+        
+        return {
+            "fixed_count": fixed_count,
+            "total_entries": len(problematic_entries),
+            "errors": errors,
+            "fixed_entries": fixed_entries,
+            "dry_run": dry_run,
+            "message": (
+                f"Would fix {len(problematic_entries)} entries" if dry_run
+                else f"Fixed {fixed_count} out of {len(problematic_entries)} entries"
+            )
+        }
+
+    def check_account_name_issues(self) -> Dict[str, object]:
+        """
+        Check for account name mismatches in journal entries.
+        Returns a dictionary with issues found and recommendations.
+        
+        Common issues:
+        - Entries using "Service Income" instead of "Service Revenue"
+        - Other account name variations that don't match chart of accounts
+        """
+        if not self.current_period_id:
+            return {"error": "No active accounting period selected"}
+        
+        issues_found = []
+        
+        # Account name mappings (wrong name -> correct name)
+        account_name_mappings = {
+            "Service Income": "Service Revenue",
+            "Owners Capital": "Owner's Capital",
+            "Owner Capital": "Owner's Capital",
+            "Owners Drawings": "Owner's Drawings",
+            "Owner Drawings": "Owner's Drawings",
+            "Salaries and Wages": "Salaries & Wages",
+        }
+        
+        # Find all journal lines in current period
+        cur = self.conn.execute("""
+            SELECT jl.id, jl.entry_id, jl.account_id, a.name as account_name,
+                   je.document_ref, je.description, je.date, jl.debit, jl.credit
+            FROM journal_lines jl
+            JOIN accounts a ON a.id = jl.account_id
+            JOIN journal_entries je ON je.id = jl.entry_id
+            WHERE je.period_id = ?
+            ORDER BY je.date, je.id, jl.id
+        """, (self.current_period_id,))
+        
+        lines = cur.fetchall()
+        
+        # Check for mismatched account names
+        for line in lines:
+            account_name = line['account_name']
+            if account_name in account_name_mappings:
+                correct_name = account_name_mappings[account_name]
+                # Check if correct account exists
+                correct_account = db.get_account_by_name(correct_name, self.conn)
+                if correct_account:
+                    issues_found.append({
+                        "line_id": line['id'],
+                        "entry_id": line['entry_id'],
+                        "document_ref": line['document_ref'],
+                        "date": line['date'],
+                        "description": line['description'],
+                        "wrong_account": account_name,
+                        "wrong_account_id": line['account_id'],
+                        "correct_account": correct_name,
+                        "correct_account_id": correct_account['id'],
+                        "debit": float(line['debit'] or 0),
+                        "credit": float(line['credit'] or 0),
+                    })
+        
+        return {
+            "period_id": self.current_period_id,
+            "total_lines_checked": len(lines),
+            "issues_found": len(issues_found),
+            "issues": issues_found,
+            "recommendation": "Delete and re-enter affected transactions, or manually update account assignments" if issues_found else "No issues found"
+        }
 
     def _initialize_cycle_status(self) -> None:
         if not self.current_period_id:

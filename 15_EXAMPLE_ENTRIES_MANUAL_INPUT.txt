@@ -1,0 +1,501 @@
+═══════════════════════════════════════════════════════════════════════════════
+  15 EXAMPLE ENTRIES - MANUAL INPUT GUIDE
+  TechFix Accounting System
+═══════════════════════════════════════════════════════════════════════════════
+
+OVERVIEW:
+---------
+This guide contains 15 journal entries to manually input into your TechFix 
+accounting system. These entries include:
+  • 10 Regular Transactions (Entries 1-10)
+  • 3 Adjusting Entries (Entries 11-13)
+  • 2 Closing Entries (Entries 14-15) - Generated automatically by the system
+
+IMPORTANT NOTES:
+----------------
+1. Replace YYYY with the current year (e.g., 2025)
+2. All amounts are in your local currency (PHP/Peso)
+3. Ensure accounts exist in your Chart of Accounts before entering
+4. Entries must be entered in chronological order for best results
+5. Closing entries (14-15) are generated automatically - do NOT enter manually
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 1: REGULAR TRANSACTIONS (Entries 1-10)
+═══════════════════════════════════════════════════════════════════════════════
+
+ENTRY 1: Owner Investment
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-01
+Description:    Owner investment
+Source Type:    (Leave blank or select "Other")
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Cash
+  Amount:       150,000.00
+
+CREDIT SIDE:
+  Account:      Owner's Capital
+  Amount:       150,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 2: Purchase Supplies (Cash)
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-03
+Description:    Purchase supplies (cash)
+Source Type:    Receipt
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Supplies
+  Amount:       8,000.00
+
+CREDIT SIDE:
+  Account:      Cash
+  Amount:       8,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 3: Purchase Office Equipment on Account
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-06
+Description:    Purchase office equipment on account
+Source Type:    Invoice
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Office Equipment
+  Amount:       50,000.00
+
+CREDIT SIDE:
+  Account:      Accounts Payable
+  Amount:       50,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 4: Service Revenue (Cash)
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-11
+Description:    Service revenue (cash)
+Source Type:    Receipt
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Cash
+  Amount:       25,000.00
+
+CREDIT SIDE:
+  Account:      Service Revenue
+  Amount:       25,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 5: Service Revenue (Billed)
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-13
+Description:    Service revenue (billed)
+Source Type:    Invoice
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Accounts Receivable
+  Amount:       35,000.00
+
+CREDIT SIDE:
+  Account:      Service Revenue
+  Amount:       35,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 6: Paid Rent Expense
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-16
+Description:    Paid rent expense
+Source Type:    Receipt
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Rent Expense
+  Amount:       12,000.00
+
+CREDIT SIDE:
+  Account:      Cash
+  Amount:       12,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 7: Paid Utilities Expense
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-19
+Description:    Paid utilities expense
+Source Type:    Receipt
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Utilities Expense
+  Amount:       5,000.00
+
+CREDIT SIDE:
+  Account:      Cash
+  Amount:       5,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 8: Paid Salaries
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-21
+Description:    Paid salaries
+Source Type:    Payroll
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Salaries & Wages
+  Amount:       20,000.00
+
+CREDIT SIDE:
+  Account:      Cash
+  Amount:       20,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 9: Received Collection from Accounts Receivable
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-23
+Description:    Received collection from accounts receivable
+Source Type:    Bank
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Cash
+  Amount:       20,000.00
+
+CREDIT SIDE:
+  Account:      Accounts Receivable
+  Amount:       20,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 10: Paid Accounts Payable
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-26
+Description:    Paid accounts payable
+Source Type:    Bank
+Document Ref:   (Optional)
+External Ref:   (Optional)
+
+DEBIT SIDE:
+  Account:      Accounts Payable
+  Amount:       30,000.00
+
+CREDIT SIDE:
+  Account:      Cash
+  Amount:       30,000.00
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2: ADJUSTING ENTRIES (Entries 11-13)
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ IMPORTANT: Check the "Adjusting Entry" checkbox for these entries!
+
+ENTRY 11: Adjust Supplies Used
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-29
+Description:    Adjust supplies used
+Source Type:    Adjust
+Document Ref:   (Optional)
+External Ref:   (Optional)
+☑ Adjusting Entry: YES (CHECK THIS BOX!)
+
+DEBIT SIDE:
+  Account:      Supplies Expense
+  Amount:       5,000.00
+
+CREDIT SIDE:
+  Account:      Supplies
+  Amount:       5,000.00
+
+Note: This entry adjusts for supplies used during the period.
+      Supplies purchased: 8,000.00
+      Supplies remaining: 3,000.00
+      Supplies used: 5,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 12: Record Depreciation Expense
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-29
+Description:    Record depreciation expense
+Source Type:    Adjust
+Document Ref:   (Optional)
+External Ref:   (Optional)
+☑ Adjusting Entry: YES (CHECK THIS BOX!)
+
+DEBIT SIDE:
+  Account:      Depreciation Expense
+  Amount:       1,000.00
+
+CREDIT SIDE:
+  Account:      Accumulated Depreciation
+  Amount:       1,000.00
+
+───────────────────────────────────────────────────────────────────────────────
+
+ENTRY 13: Accrue Utilities Expense
+───────────────────────────────────────────────────────────────────────────────
+Date:           YYYY-01-29
+Description:    Accrue utilities expense
+Source Type:    Adjust
+Document Ref:   (Optional)
+External Ref:   (Optional)
+☑ Adjusting Entry: YES (CHECK THIS BOX!)
+
+DEBIT SIDE:
+  Account:      Utilities Expense
+  Amount:       2,000.00
+
+CREDIT SIDE:
+  Account:      Utilities Payable
+  Amount:       2,000.00
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3: CLOSING ENTRIES (Entries 14-15)
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ DO NOT ENTER THESE MANUALLY!
+
+Closing entries are generated automatically by the system. To create them:
+
+1. Go to the "Financial Statements" tab
+2. Ensure all adjusting entries are completed
+3. Click "Generate Closing Entries" or use the closing entries feature
+4. The system will automatically create closing entries on YYYY-02-01
+
+The closing entries will:
+  • Close all revenue accounts to Income Summary
+  • Close all expense accounts to Income Summary
+  • Close Income Summary to Owner's Capital
+  • Close Owner's Drawings to Owner's Capital (if applicable)
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP-BY-STEP INSTRUCTIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+HOW TO INPUT EACH ENTRY:
+
+1. Open TechFix Accounting System
+2. Navigate to the "Transactions" tab
+3. For each entry above, follow these steps:
+
+   a) Enter the Date:
+      • Format: YYYY-MM-DD (e.g., 2025-01-01)
+      • Use the date picker or type manually
+
+   b) Enter the Description:
+      • Copy exactly as shown in the entry above
+
+   c) Select Source Type (Optional):
+      • Choose from dropdown: Receipt, Invoice, Bank, Payroll, Adjust, etc.
+
+   d) Enter Document Reference (Optional):
+      • Leave blank or enter a reference number
+
+   e) Enter External Reference (Optional):
+      • Leave blank or enter an external reference
+
+   f) For ADJUSTING ENTRIES (11-13):
+      • CHECK the "Adjusting Entry" checkbox!
+
+   g) Select Debit Account:
+      • Click the Debit Account dropdown
+      • Select the account name exactly as shown
+      • Account names must match exactly (case-sensitive)
+
+   h) Enter Debit Amount:
+      • Enter the amount as shown (e.g., 150000 or 150000.00)
+      • You can use commas: 150,000.00
+
+   i) Select Credit Account:
+      • Click the Credit Account dropdown
+      • Select the account name exactly as shown
+
+   j) Enter Credit Amount:
+      • Enter the amount as shown
+      • The system will auto-fill if you only enter debit amount
+
+   k) Verify Balance:
+      • Ensure Debit Amount = Credit Amount
+      • System will show error if not balanced
+
+   l) Click "Record & Post":
+      • This saves and posts the entry immediately
+      • You'll see a confirmation message with entry ID
+
+4. Repeat for all 13 manual entries (entries 14-15 are automatic)
+
+5. After entering all entries, generate closing entries:
+   • Go to Financial Statements tab
+   • Click "Generate Closing Entries" or use the closing feature
+   • System will create closing entries automatically
+
+═══════════════════════════════════════════════════════════════════════════════
+ACCOUNT NAMES REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+Make sure these accounts exist in your Chart of Accounts:
+
+ASSETS:
+  • Cash
+  • Supplies
+  • Office Equipment
+  • Accounts Receivable
+  • Accumulated Depreciation
+
+LIABILITIES:
+  • Accounts Payable
+  • Utilities Payable
+
+EQUITY:
+  • Owner's Capital
+  • Owner's Drawings
+
+REVENUE:
+  • Service Revenue
+
+EXPENSES:
+  • Rent Expense
+  • Utilities Expense
+  • Salaries & Wages
+  • Supplies Expense
+  • Depreciation Expense
+
+If any account is missing, add it to your Chart of Accounts first!
+
+═══════════════════════════════════════════════════════════════════════════════
+EXPECTED RESULTS AFTER COMPLETION
+═══════════════════════════════════════════════════════════════════════════════
+
+TRIAL BALANCE SUMMARY:
+───────────────────────────────────────────────────────────────────────────────
+After entering all entries, your Unadjusted Trial Balance should show:
+
+Total Debits:  ₱150,000.00 (or your currency equivalent)
+Total Credits: ₱150,000.00
+
+After adjusting entries, your Adjusted Trial Balance should show:
+
+Total Debits:  ₱158,000.00
+Total Credits: ₱158,000.00
+
+After closing entries, your Post-Closing Trial Balance should show:
+
+Total Debits:  ₱158,000.00
+Total Credits: ₱158,000.00
+
+INCOME STATEMENT EXPECTED VALUES:
+───────────────────────────────────────────────────────────────────────────────
+Revenue:
+  Service Revenue:        ₱60,000.00
+
+Expenses:
+  Rent Expense:           ₱12,000.00
+  Utilities Expense:      ₱7,000.00  (5,000 paid + 2,000 accrued)
+  Salaries & Wages:      ₱20,000.00
+  Supplies Expense:       ₱5,000.00
+  Depreciation Expense:  ₱1,000.00
+
+Total Expenses:           ₱45,000.00
+
+Net Income:               ₱15,000.00
+
+BALANCE SHEET EXPECTED VALUES:
+───────────────────────────────────────────────────────────────────────────────
+ASSETS:
+  Cash:                   ₱120,000.00
+  Accounts Receivable:    ₱15,000.00
+  Supplies:               ₱3,000.00
+  Office Equipment:       ₱50,000.00
+  Less: Accum. Depr.:    (₱1,000.00)
+  Net Office Equipment:   ₱49,000.00
+
+Total Assets:             ₱187,000.00
+
+LIABILITIES:
+  Accounts Payable:       ₱20,000.00
+  Utilities Payable:      ₱2,000.00
+
+Total Liabilities:        ₱22,000.00
+
+EQUITY:
+  Owner's Capital:        ₱150,000.00
+  Add: Net Income:       ₱15,000.00
+  Less: Owner's Drawings: ₱0.00
+
+Total Equity:             ₱165,000.00
+
+BALANCE CHECK:
+  Assets = Liabilities + Equity
+  ₱187,000.00 = ₱22,000.00 + ₱165,000.00
+  ₱187,000.00 = ₱187,000.00 ✓ BALANCED
+
+═══════════════════════════════════════════════════════════════════════════════
+TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEM: "Could not resolve account" error
+SOLUTION: 
+  • Check that account name matches exactly (case-sensitive)
+  • Ensure account exists in Chart of Accounts
+  • Use dropdown to select account, don't type manually
+
+PROBLEM: "Debits must equal credits" error
+SOLUTION:
+  • Verify amounts are entered correctly
+  • Check for typos in amounts
+  • Ensure both debit and credit amounts match
+
+PROBLEM: Financial statements show imbalance
+SOLUTION:
+  • Verify all entries are posted (not drafts)
+  • Check that adjusting entries are marked as "Adjusting Entry"
+  • Ensure closing entries have been generated
+  • Verify all account names match exactly
+
+PROBLEM: Accounts not appearing in dropdown
+SOLUTION:
+  • Go to Chart of Accounts and verify accounts exist
+  • Refresh the Transactions tab
+  • Restart the application if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+VERIFICATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+After entering all entries, verify:
+
+□ All 13 manual entries are posted (not drafts)
+□ All entries show status "Posted" in the Journal
+□ Adjusting entries (11-13) are marked as adjusting entries
+□ Closing entries (14-15) have been generated automatically
+□ Trial Balance shows debits = credits
+□ Income Statement shows Net Income of ₱15,000.00
+□ Balance Sheet balances (Assets = Liabilities + Equity)
+□ All account balances match expected values above
+
+═══════════════════════════════════════════════════════════════════════════════
+END OF GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+For questions or issues, refer to the TechFix documentation or contact support.
+
+Good luck with your accounting entries!
+

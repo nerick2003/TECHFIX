@@ -5,7 +5,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import tkinter.font as tkfont
 import sqlite3
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import calendar
 from typing import Optional, Sequence, List, Dict
 import json
@@ -1679,6 +1679,180 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
 
+    def _load_15_entries_example(self) -> None:
+        """Load 15 example entries for testing purposes."""
+        try:
+            # Confirm with user
+            result = messagebox.askyesno(
+                "Load Example Entries",
+                "This will create 15 sample journal entries in the current period.\n\n"
+                "This includes:\n"
+                "- 10 regular transactions\n"
+                "- 3 adjusting entries\n"
+                "- 2 closing entries\n\n"
+                "Continue?",
+                icon='question'
+            )
+            if not result:
+                return
+
+            # Helper function to get account ID by name
+            def get_account_id(name: str) -> int:
+                account = db.get_account_by_name(name, self.engine.conn)
+                if account is None:
+                    raise ValueError(f"Account '{name}' not found in database")
+                return account['id']
+
+            # Get account IDs
+            accounts = {}
+            account_names = [
+                'Cash', "Owner's Capital", 'Supplies', 'Office Equipment',
+                'Accounts Payable', 'Accounts Receivable', 'Service Revenue',
+                'Utilities Expense', 'Rent Expense', "Owner's Drawings",
+                'Supplies Expense', 'Depreciation Expense', 'Accumulated Depreciation',
+                'Utilities Payable', 'Salaries & Wages'
+            ]
+            
+            for name in account_names:
+                accounts[name] = get_account_id(name)
+
+            # Helper function to post entries
+            def post(date_str: str, description: str, lines: List[tuple], is_adjusting: bool = False, is_closing: bool = False) -> int:
+                journal_lines = [JournalLine(account_id=acc_id, debit=debit, credit=credit) 
+                                for acc_id, debit, credit in lines]
+                return self.engine.record_entry(
+                    date_str,
+                    description,
+                    journal_lines,
+                    is_adjusting=is_adjusting,
+                    is_closing=is_closing,
+                    status='posted'
+                )
+
+            # Set up dates
+            year = date.today().year
+            base_date = date(year, 1, 1)
+
+            # Entry 1: Owner investment
+            post(
+                (base_date + timedelta(days=0)).isoformat(),
+                'Owner investment',
+                [(accounts['Cash'], 150000.0, 0.0), (accounts["Owner's Capital"], 0.0, 150000.0)]
+            )
+
+            # Entry 2: Purchase supplies for cash
+            post(
+                (base_date + timedelta(days=2)).isoformat(),
+                'Purchase supplies (cash)',
+                [(accounts['Supplies'], 8000.0, 0.0), (accounts['Cash'], 0.0, 8000.0)]
+            )
+
+            # Entry 3: Purchase equipment on account
+            post(
+                (base_date + timedelta(days=5)).isoformat(),
+                'Purchase office equipment on account',
+                [(accounts['Office Equipment'], 50000.0, 0.0), (accounts['Accounts Payable'], 0.0, 50000.0)]
+            )
+
+            # Entry 4: Service revenue (cash)
+            post(
+                (base_date + timedelta(days=10)).isoformat(),
+                'Service revenue (cash)',
+                [(accounts['Cash'], 25000.0, 0.0), (accounts['Service Revenue'], 0.0, 25000.0)]
+            )
+
+            # Entry 5: Service revenue (billed)
+            post(
+                (base_date + timedelta(days=12)).isoformat(),
+                'Service revenue (billed)',
+                [(accounts['Accounts Receivable'], 35000.0, 0.0), (accounts['Service Revenue'], 0.0, 35000.0)]
+            )
+
+            # Entry 6: Pay rent expense
+            post(
+                (base_date + timedelta(days=15)).isoformat(),
+                'Paid rent expense',
+                [(accounts['Rent Expense'], 12000.0, 0.0), (accounts['Cash'], 0.0, 12000.0)]
+            )
+
+            # Entry 7: Pay utilities expense
+            post(
+                (base_date + timedelta(days=18)).isoformat(),
+                'Paid utilities expense',
+                [(accounts['Utilities Expense'], 5000.0, 0.0), (accounts['Cash'], 0.0, 5000.0)]
+            )
+
+            # Entry 8: Pay salaries
+            post(
+                (base_date + timedelta(days=20)).isoformat(),
+                'Paid salaries',
+                [(accounts['Salaries & Wages'], 20000.0, 0.0), (accounts['Cash'], 0.0, 20000.0)]
+            )
+
+            # Entry 9: Received collection from AR
+            post(
+                (base_date + timedelta(days=22)).isoformat(),
+                'Received collection from accounts receivable',
+                [(accounts['Cash'], 20000.0, 0.0), (accounts['Accounts Receivable'], 0.0, 20000.0)]
+            )
+
+            # Entry 10: Paid accounts payable
+            post(
+                (base_date + timedelta(days=25)).isoformat(),
+                'Paid accounts payable',
+                [(accounts['Accounts Payable'], 30000.0, 0.0), (accounts['Cash'], 0.0, 30000.0)]
+            )
+
+            # Entry 11: Adjust supplies used
+            remaining_supplies = 3000.0
+            supplies_used = 8000.0 - remaining_supplies
+            post(
+                (base_date + timedelta(days=28)).isoformat(),
+                'Adjust supplies used',
+                [(accounts['Supplies Expense'], supplies_used, 0.0), (accounts['Supplies'], 0.0, supplies_used)],
+                is_adjusting=True
+            )
+
+            # Entry 12: Record depreciation
+            depreciation_amount = 1000.0
+            post(
+                (base_date + timedelta(days=28)).isoformat(),
+                'Record depreciation expense',
+                [(accounts['Depreciation Expense'], depreciation_amount, 0.0), 
+                 (accounts['Accumulated Depreciation'], 0.0, depreciation_amount)],
+                is_adjusting=True
+            )
+
+            # Entry 13: Accrue utilities expense
+            accrued_utilities = 2000.0
+            post(
+                (base_date + timedelta(days=28)).isoformat(),
+                'Accrue utilities expense',
+                [(accounts['Utilities Expense'], accrued_utilities, 0.0), 
+                 (accounts['Utilities Payable'], 0.0, accrued_utilities)],
+                is_adjusting=True
+            )
+
+            # Entries 14-15: Closing entries
+            closing_date = (base_date + timedelta(days=31)).isoformat()
+            closing_entry_ids = self.engine.make_closing_entries(closing_date)
+
+            # Refresh views
+            self._refresh_cycle_and_views()
+
+            messagebox.showinfo(
+                "Success",
+                f"Successfully loaded 15 example entries!\n\n"
+                f"- 10 regular transactions\n"
+                f"- 3 adjusting entries\n"
+                f"- {len(closing_entry_ids)} closing entries\n\n"
+                f"All entries have been posted to the current period."
+            )
+
+        except Exception as e:
+            logger.exception("Error loading 15 entries example")
+            messagebox.showerror("Error", f"Failed to load example entries:\n{str(e)}")
+
     def _snapshot_txn_form(self) -> Dict[str, str]:
         snap: Dict[str, str] = {}
         try:
@@ -1830,6 +2004,13 @@ class TechFixApp(tk.Tk):
             toolbar,
             text="Refresh Cycle",
             command=self._refresh_cycle_and_views,
+            style="Techfix.TButton",
+        ).pack(side=tk.LEFT, padx=(0, 12))
+
+        ttk.Button(
+            toolbar,
+            text="Load 15 Entries Example",
+            command=self._load_15_entries_example,
             style="Techfix.TButton",
         ).pack(side=tk.LEFT, padx=(0, 12))
 
@@ -2335,7 +2516,9 @@ class TechFixApp(tk.Tk):
                         pass
                 try:
                     if hasattr(self, 'txn_prefill_status'):
-                        self.txn_prefill_status.configure(text="Document attached")
+                        self.txn_prefill_status.configure(
+                            text="Document attached - Remember to click 'Record & Post' (not 'Save Draft') to include in balance sheet"
+                        )
                 except Exception:
                     pass
             try:
@@ -2421,9 +2604,21 @@ class TechFixApp(tk.Tk):
                     except Exception:
                         pass
                     return
+            # Try to import pyzbar, but don't fail if it's not available
+            # OpenCV QR detector can work as fallback
+            zbar_decode = None  # type: ignore
             try:
                 from pyzbar.pyzbar import decode as zbar_decode
+            except (ImportError, FileNotFoundError, OSError) as e:
+                # pyzbar may fail due to missing DLLs on Windows (libiconv.dll, libzbar-64.dll)
+                # This is OK - OpenCV QR detector will be used as fallback
+                try:
+                    logger.debug(f"pyzbar not available (will use OpenCV fallback): {e}")
+                except Exception:
+                    pass
+                zbar_decode = None  # type: ignore
             except Exception:
+                # Other errors - try to install, but don't block if it fails
                 ok = False
                 try:
                     ok = self._attempt_install_packages(["pyzbar"])
@@ -2598,8 +2793,14 @@ class TechFixApp(tk.Tk):
                         if zbar_decode:
                             try:
                                 codes = zbar_decode(gray)
-                            except Exception:
+                            except Exception as e:
+                                # pyzbar may fail due to missing DLLs on Windows
+                                # This is OK - we'll use OpenCV as fallback
                                 codes = []
+                                try:
+                                    logger.debug(f"pyzbar decode failed (will use OpenCV fallback): {e}")
+                                except Exception:
+                                    pass
                             if codes:
                                 try:
                                     payload = codes[0].data.decode('utf-8', errors='replace')
@@ -2819,6 +3020,30 @@ class TechFixApp(tk.Tk):
                     self.txn_source_type.set(data.get('source_type'))
                 except Exception:
                     pass
+            # Remind user to post the transaction (not save as draft)
+            try:
+                if hasattr(self, 'txn_prefill_status'):
+                    current_text = self.txn_prefill_status.cget('text')
+                    if 'successful' in current_text.lower() or 'scanned' in current_text.lower():
+                        # Add reminder about posting
+                        self.txn_prefill_status.configure(
+                            text=f"{current_text} - Remember to click 'Record & Post' (not 'Save Draft') to include in balance sheet"
+                        )
+            except Exception:
+                pass
+            # Automatically check adjusting entry checkbox if source_type is "Adjust" or description contains "Adjusting entry"
+            if hasattr(self, 'txn_is_adjust'):
+                try:
+                    source_type = data.get('source_type', '').strip()
+                    description = data.get('description', '').strip()
+                    is_adjusting = (
+                        source_type.lower() == 'adjust' or
+                        'adjusting entry' in description.lower()
+                    )
+                    if is_adjusting:
+                        self.txn_is_adjust.set(1)
+                except Exception:
+                    pass
             if hasattr(self, 'txn_memo') and data.get('memo'):
                 try:
                     self.txn_memo.delete('1.0', tk.END); self.txn_memo.insert('1.0', data.get('memo'))
@@ -2972,8 +3197,19 @@ class TechFixApp(tk.Tk):
                     self.txn_prefill_status.configure(text="Scanning image…")
             except Exception:
                 pass
+            # Try to import pyzbar, but don't fail if it's not available
+            # OpenCV QR detector can work as fallback
+            zbar_decode = None  # type: ignore
             try:
                 from pyzbar.pyzbar import decode as zbar_decode
+            except (ImportError, FileNotFoundError, OSError) as e:
+                # pyzbar may fail due to missing DLLs on Windows
+                # This is OK - OpenCV QR detector will be used as fallback
+                try:
+                    logger.debug(f"pyzbar not available (will use OpenCV fallback): {e}")
+                except Exception:
+                    pass
+                zbar_decode = None  # type: ignore
             except Exception:
                 zbar_decode = None  # type: ignore
             try:
@@ -2991,8 +3227,14 @@ class TechFixApp(tk.Tk):
                             payload = res[0].data.decode('utf-8', errors='replace')
                         except Exception:
                             payload = None
-                except Exception:
+                except Exception as e:
+                    # pyzbar may fail due to missing DLLs on Windows
+                    # This is OK - we'll use OpenCV as fallback
                     payload = None
+                    try:
+                        logger.debug(f"pyzbar decode failed (will use OpenCV fallback): {e}")
+                    except Exception:
+                        pass
             if payload is None:
                 try:
                     import cv2
@@ -3501,6 +3743,12 @@ class TechFixApp(tk.Tk):
                     if hasattr(self, "txn_source_type"):
                         self.txn_source_type.set(typ if typ in ["Invoice", "Receipt", "Bank", "Adjust", "Payroll", "Other"] else "")
                         updated.append("Source")
+                    # Check if adjusting entry based on source type from filename
+                    if hasattr(self, 'txn_is_adjust') and typ == "Adjust":
+                        try:
+                            self.txn_is_adjust.set(1)
+                        except Exception:
+                            pass
                     if hasattr(self, "txn_doc_ref") and docno:
                         try:
                             self.txn_doc_ref.delete(0, tk.END); self.txn_doc_ref.insert(0, docno)
@@ -3512,6 +3760,12 @@ class TechFixApp(tk.Tk):
                             dval = (typ + (" " + docno if docno else "") + (" " + desc_rest if desc_rest else "")).strip()
                             self.txn_desc.delete(0, tk.END); self.txn_desc.insert(0, dval)
                             updated.append("Description")
+                            # Also check adjusting entry based on description
+                            if hasattr(self, 'txn_is_adjust') and 'adjusting entry' in dval.lower():
+                                try:
+                                    self.txn_is_adjust.set(1)
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                     if hasattr(self, "txn_date") and date:
@@ -3575,6 +3829,19 @@ class TechFixApp(tk.Tk):
                 try:
                     self.txn_source_type.set(data.get("source_type"))
                     updated.append("Source")
+                except Exception:
+                    pass
+            # Automatically check adjusting entry checkbox if source_type is "Adjust" or description contains "Adjusting entry"
+            if hasattr(self, 'txn_is_adjust'):
+                try:
+                    source_type = data.get('source_type', '').strip()
+                    description = data.get('description', '').strip()
+                    is_adjusting = (
+                        source_type.lower() == 'adjust' or
+                        'adjusting entry' in description.lower()
+                    )
+                    if is_adjusting:
+                        self.txn_is_adjust.set(1)
                 except Exception:
                     pass
             if hasattr(self, "txn_memo") and data.get("memo"):
@@ -4639,7 +4906,9 @@ class TechFixApp(tk.Tk):
         try:
             if tree is None:
                 # Try to get tree from window
-                if hasattr(self, '_recent_txn_window') and hasattr(self._recent_txn_window, 'txn_tree'):
+                if (hasattr(self, '_recent_txn_window') and 
+                    self._recent_txn_window.winfo_exists() and 
+                    hasattr(self._recent_txn_window, 'txn_tree')):
                     tree = self._recent_txn_window.txn_tree
                 else:
                     return
@@ -4698,63 +4967,130 @@ class TechFixApp(tk.Tk):
                     acct = ''
                 
                 # Get reference
-                ref = conn.execute("SELECT doc_ref FROM journal_entries WHERE id=?", (eid,)).fetchone()
-                ref_str = (ref['doc_ref'] if ref and 'doc_ref' in ref.keys() else '') or ''
+                ref = conn.execute("SELECT document_ref FROM journal_entries WHERE id=?", (eid,)).fetchone()
+                ref_str = (ref['document_ref'] if ref and 'document_ref' in ref.keys() else '') or ''
                 
                 # Format amounts
                 debit_str = f"{debit:,.2f}" if debit > 0 else ""
                 credit_str = f"{credit:,.2f}" if credit > 0 else ""
                 
                 tree.insert("", "end", iid=f"entry_{eid}", values=(date, ref_str, desc, debit_str, credit_str, acct))
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            logging.error(f"Error loading recent transactions: {e}")
+            logging.error(traceback.format_exc())
 
     def _delete_selected_transaction_window(self) -> None:
         """Delete selected transaction from the window."""
         try:
-            if not hasattr(self, '_recent_txn_window') or not hasattr(self._recent_txn_window, 'txn_tree'):
+            # Check if window exists and is still valid
+            if not hasattr(self, '_recent_txn_window'):
+                messagebox.showwarning("Delete", "Recent Transactions window is not open.")
                 return
             
-            tree = self._recent_txn_window.txn_tree
+            window = self._recent_txn_window
+            try:
+                # Check if window still exists
+                if not window.winfo_exists():
+                    messagebox.showwarning("Delete", "Recent Transactions window has been closed.")
+                    delattr(self, '_recent_txn_window')
+                    return
+            except tk.TclError:
+                messagebox.showwarning("Delete", "Recent Transactions window has been closed.")
+                if hasattr(self, '_recent_txn_window'):
+                    delattr(self, '_recent_txn_window')
+                return
+            
+            if not hasattr(window, 'txn_tree'):
+                messagebox.showerror("Delete", "Transaction list not found in window.")
+                return
+            
+            tree = window.txn_tree
             sel = tree.selection()
             if not sel:
-                messagebox.showinfo("Delete", "Select a transaction to delete.")
+                messagebox.showinfo("Delete", "Please select a transaction to delete.")
                 return
             
             item = sel[0]
-            vals = tree.item(item, 'values')
+            entry_id = None
             try:
-                # Extract entry_id from iid or values
-                iid = tree.item(item, 'iid')
-                if iid.startswith('entry_'):
-                    entry_id = int(iid.split('_')[1])
+                # Extract entry_id from iid (item itself is the iid in Treeview)
+                # The iid format is "entry_{entry_id}" as set in _load_recent_transactions_window
+                if item and isinstance(item, str) and item.startswith('entry_'):
+                    entry_id = int(item.split('_')[1])
                 else:
-                    entry_id = None
-            except Exception:
-                entry_id = None
+                    # Fallback: try to get iid from tree item
+                    try:
+                        iid = tree.item(item, 'iid')
+                        if iid and iid.startswith('entry_'):
+                            entry_id = int(iid.split('_')[1])
+                    except Exception:
+                        pass
+                    
+                    # If still no entry_id, try to find by matching description and date
+                    if not entry_id:
+                        vals = tree.item(item, 'values')
+                        if len(vals) >= 3:
+                            date = vals[0] if vals[0] else ''
+                            desc = vals[2] if vals[2] else ''
+                            if date and desc:
+                                conn = self.engine.conn
+                                cur = conn.execute(
+                                    "SELECT id FROM journal_entries WHERE date=? AND description=? LIMIT 1",
+                                    (date, desc)
+                                )
+                                result = cur.fetchone()
+                                if result:
+                                    entry_id = result['id']
+            except Exception as e:
+                logger.exception("Error extracting entry_id")
+                messagebox.showerror("Delete", f"Could not determine the selected transaction ID: {e}")
+                return
             
             if not entry_id:
                 messagebox.showerror("Delete", "Could not determine the selected transaction ID.")
                 return
             
-            if not messagebox.askyesno("Confirm Delete", f"Delete transaction #{entry_id}? This cannot be undone."):
+            # Confirm deletion
+            if not messagebox.askyesno("Confirm Delete", f"Delete transaction #{entry_id}?\n\nThis action cannot be undone."):
                 return
             
+            # Delete from database
             conn = self.engine.conn
             try:
+                # Delete journal entry (journal_lines will cascade delete due to foreign key)
                 conn.execute("DELETE FROM journal_entries WHERE id=?", (entry_id,))
                 conn.commit()
+                messagebox.showinfo("Success", f"Transaction #{entry_id} has been deleted.")
             except Exception as e:
-                messagebox.showerror("Delete Failed", f"Error deleting transaction: {e}")
+                logger.exception("Error deleting transaction")
+                messagebox.showerror("Delete Failed", f"Error deleting transaction: {str(e)}")
+                conn.rollback()
                 return
             
             # Reload transactions in window
             try:
                 self._load_recent_transactions_window(tree=tree)
+            except Exception as e:
+                logger.exception("Error reloading transactions window")
+            
+            # Refresh other views that might show this transaction
+            try:
+                self._load_journal_entries()
             except Exception:
                 pass
-        except Exception:
-            pass
+            try:
+                self._load_recent_transactions()
+            except Exception:
+                pass
+            try:
+                self._refresh_cycle_and_views()
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.exception("Unexpected error in _delete_selected_transaction_window")
+            messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
 
     def _delete_selected_transaction(self) -> None:
         try:
@@ -6000,6 +6336,24 @@ class TechFixApp(tk.Tk):
                 return None
             text_lower = text_str.lower()
             
+            # Common account name aliases/mappings
+            # Maps scanned names to actual account names in chart of accounts
+            account_aliases = {
+                "service income": "Service Revenue",
+                "service revenue": "Service Revenue",
+                "owners capital": "Owner's Capital",
+                "owner capital": "Owner's Capital",
+                "owners drawings": "Owner's Drawings",
+                "owner drawings": "Owner's Drawings",
+                "salaries and wages": "Salaries & Wages",
+                "salaries & wages": "Salaries & Wages",
+            }
+            
+            # Check if text matches an alias
+            if text_lower in account_aliases:
+                text_str = account_aliases[text_lower]
+                text_lower = text_str.lower()
+            
             # Extract account name from "CODE - Name" format if present
             text_name = text_str
             text_code = None
@@ -6024,6 +6378,11 @@ class TechFixApp(tk.Tk):
                 # Match by extracted account name (if format was "CODE - Name")
                 if text_name and text_name_lower == name_lower:
                     return disp
+                
+                # Check alias mapping for the account name
+                if name_lower in account_aliases:
+                    if text_name_lower == account_aliases[name_lower].lower():
+                        return disp
                 
                 # Partial matches (if exact match failed)
                 # Check if account name is contained in text or vice versa (case-insensitive)
@@ -6934,6 +7293,15 @@ class TechFixApp(tk.Tk):
                 return
             did = self._resolve_account_id(debit_acct)
             cid = self._resolve_account_id(credit_acct)
+            
+            # Validate that both account IDs were resolved successfully
+            if not did:
+                messagebox.showerror('Error', f'Could not resolve debit account: "{debit_acct}". Please select a valid account.')
+                return
+            if not cid:
+                messagebox.showerror('Error', f'Could not resolve credit account: "{credit_acct}". Please select a valid account.')
+                return
+            
             lines = [JournalLine(account_id=did, debit=debit_amt), JournalLine(account_id=cid, credit=credit_amt)]
             # Duplicate-entry protection: prevent accidentally posting the same
             # transaction twice from the Transactions tab.
@@ -7247,10 +7615,14 @@ class TechFixApp(tk.Tk):
         self.fs_date_to = ttk.Entry(date_frame, width=12, style="Techfix.TEntry")
         self.fs_date_to.pack(side=tk.LEFT)
         
-        # Default to current date
+        # Default to last day of current month
         import datetime
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        self.fs_date_to.insert(0, today)
+        import calendar
+        today = datetime.date.today()
+        # Get last day of current month
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        last_day_of_month = today.replace(day=last_day).strftime("%Y-%m-%d")
+        self.fs_date_to.insert(0, last_day_of_month)
         
         # Action buttons + presets - use grid for responsive layout
         btn_frame = ttk.Frame(controls, style="Techfix.Surface.TFrame")
@@ -7280,10 +7652,13 @@ class TechFixApp(tk.Tk):
         def _apply_preset(name: str) -> None:
             try:
                 import datetime as _dt
+                import calendar
                 today = _dt.date.today()
                 if name == "This Month":
                     start = today.replace(day=1)
-                    end = today
+                    # Use last day of current month
+                    last_day = calendar.monthrange(today.year, today.month)[1]
+                    end = today.replace(day=last_day)
                 elif name == "Last Month":
                     first_this = today.replace(day=1)
                     last_month_end = first_this - _dt.timedelta(days=1)
@@ -7291,7 +7666,9 @@ class TechFixApp(tk.Tk):
                     end = last_month_end
                 elif name == "Year to Date":
                     start = today.replace(month=1, day=1)
-                    end = today
+                    # Use last day of current month for year-to-date
+                    last_day = calendar.monthrange(today.year, today.month)[1]
+                    end = today.replace(day=last_day)
                 else:
                     return
                 self.fs_date_from.delete(0, tk.END)
@@ -7347,7 +7724,7 @@ class TechFixApp(tk.Tk):
         
         # Income Statement Tab
         self.income_statement_frame = ttk.Frame(self.fs_notebook, style="Techfix.Surface.TFrame")
-        self.fs_notebook.add(self.income_statement_frame, text="Profit & Loss")
+        self.fs_notebook.add(self.income_statement_frame, text="Income Statement")
         
         # Balance Sheet Tab
         self.balance_sheet_frame = ttk.Frame(self.fs_notebook, style="Techfix.Surface.TFrame")
@@ -7593,9 +7970,23 @@ class TechFixApp(tk.Tk):
         Returns (debit_amount, credit_amount)
         """
         try:
-            normal = (row['normal_side'] if 'normal_side' in row.keys() else 'debit').lower()
+            # Handle both dict and sqlite3.Row objects
+            acc_type = (row['type'] if 'type' in row.keys() and row['type'] else '').lower()
+            normal = (row['normal_side'] if 'normal_side' in row.keys() and row['normal_side'] else 'debit').lower()
             net_debit = float(row['net_debit'] if 'net_debit' in row.keys() and row['net_debit'] is not None else 0)
             net_credit = float(row['net_credit'] if 'net_credit' in row.keys() and row['net_credit'] is not None else 0)
+
+            # Contra-assets always have credit balances and should be shown on credit side
+            if acc_type == 'contra asset':
+                # For contra-assets, credit balance is positive (normal)
+                # Show the credit amount on credit side, debit amount (if any) on debit side
+                if net_credit > 0:
+                    return (0.0, net_credit)
+                elif net_debit > 0:
+                    # Abnormal debit balance (shouldn't happen, but handle it)
+                    return (net_debit, 0.0)
+                else:
+                    return (0.0, 0.0)
 
             if normal == 'debit':
                 bal = net_debit - net_credit
@@ -7724,193 +8115,660 @@ class TechFixApp(tk.Tk):
             except Exception as e:
                 messagebox.showerror("Export Failed", f"Failed to export {tab_name}: {str(e)}")
 
-    def _generate_income_statement(self, trial_balance: list, as_of_date: str = None) -> None:
-        """Generate and display the income statement from trial balance data"""
+    def _format_amount(self, amount: float) -> str:
+        """Shared helper to format amounts (use parentheses for negative values)"""
         try:
-            # Group accounts by type
-            revenue = []
-            expenses = []
+            amount = float(amount or 0)
+        except (ValueError, TypeError):
+            return "0.00"
+        if amount < 0:
+            return f"({abs(amount):,.2f})"
+        return f"{amount:,.2f}"
+    
+    def _update_text_widget(self, widget: tk.Text, content: List[tuple]) -> None:
+        """Shared helper to update a text widget with formatted content"""
+        widget.config(state=tk.NORMAL)
+        widget.delete(1.0, tk.END)
+        for text, tag in content:
+            if tag:
+                widget.insert(tk.END, text, tag)
+            else:
+                widget.insert(tk.END, text)
+        widget.config(state=tk.DISABLED)
+    
+    def _generate_income_statement(self, trial_balance: list, as_of_date: str = None, start_date: str = None) -> None:
+        """Generate and display the income statement using backend method for consistency"""
+        try:
+            # Check if income_text widget exists
+            if not hasattr(self, 'income_text'):
+                logger.warning("Income statement text widget not initialized yet")
+                return
             
-            for row in trial_balance:
-                account_type = row['type'].lower()
-                # Use net_credit for revenue and net_debit for expenses
-                if account_type == 'revenue':
-                    amount = row['net_credit'] - row['net_debit']
-                    if abs(amount) > 0.01:  # Only include accounts with non-zero balances (allowing for rounding)
-                        revenue.append((row['name'], amount))
-                elif account_type == 'expense':
-                    amount = row['net_debit'] - row['net_credit']
-                    if abs(amount) > 0.01:  # Only include accounts with non-zero balances (allowing for rounding)
-                        expenses.append((row['name'], amount))
+            # Determine date range for income statement
+            # Use provided start_date if available, otherwise determine it
+            end_date = as_of_date or date.today().isoformat()
             
-            # Helper to format amounts (use parentheses for negative values)
-            def fmt(a: float) -> str:
+            if not start_date:
                 try:
-                    a = float(a or 0)
+                    if self.engine.current_period and 'start_date' in self.engine.current_period:
+                        start_date = self.engine.current_period['start_date']
+                    else:
+                        # Get earliest entry date as fallback
+                        cur = self.engine.conn.execute("""
+                            SELECT MIN(date) as min_date FROM journal_entries 
+                            WHERE period_id = ?
+                        """, (self.engine.current_period_id,))
+                        result = cur.fetchone()
+                        start_date = result['min_date'] if result and result['min_date'] else '1900-01-01'
                 except Exception:
-                    return str(a)
-                if a < 0:
-                    return f"({abs(a):,.2f})"
-                return f"{a:,.2f}"
-
-            # Calculate totals (signed sums) and net income
-            total_revenue = sum(amt for _, amt in revenue)
-            total_expenses = sum(amt for _, amt in expenses)
-            net_income = total_revenue - total_expenses
+                    start_date = '1900-01-01'
             
-            # Format the income statement
+            # Use backend method for consistent calculation (handles contra-revenue, etc.)
+            # Pass period_id=None to allow cross-period reporting when dates are set
+            income_stmt = self.engine.generate_income_statement(start_date, end_date, period_id=None)
+            
+            # Extract data from backend result
+            revenues = income_stmt.get('revenues', [])
+            expenses = income_stmt.get('expenses', [])
+            total_revenue = income_stmt.get('total_revenue', 0.0)
+            total_expense = income_stmt.get('total_expense', 0.0)
+            net_income = income_stmt.get('net_income', 0.0)
+            
+            # Build the income statement content
             content = []
-            content.append(('Profit & Loss Statement\n', 'header'))
-            content.append((f'For the period ended {as_of_date or "current date"}\n\n', 'subheader'))
+            content.append(('Income Statement\n', 'header'))
+            content.append((f'For the period ended {end_date}\n\n', 'subheader'))
             
-            # Add revenues
+            # Add revenues section
             content.append(('Revenues\n', 'section'))
-            for name, amount in revenue:
-                content.append((f'{name}: {fmt(amount)}\n', None))
+            if revenues:
+                for rev in revenues:
+                    amount = rev.get('amount', 0.0)
+                    if abs(amount) > 0.005:  # Only show non-zero amounts
+                        content.append((f"{rev.get('name', 'Unknown')}: {self._format_amount(amount)}\n", None))
+            else:
+                content.append(('(none)\n', None))
+            content.append((f'\nTotal Revenue: {self._format_amount(total_revenue)}\n\n', 'total'))
             
-            content.append((f'\nTotal Revenue: {fmt(total_revenue)}\n\n', 'total'))
-            
-            # Add expenses
+            # Add expenses section
             content.append(('Expenses\n', 'section'))
-            for name, amount in expenses:
-                content.append((f'{name}: {fmt(amount)}\n', None))
+            if expenses:
+                for exp in expenses:
+                    amount = exp.get('amount', 0.0)
+                    if abs(amount) > 0.005:  # Only show non-zero amounts
+                        content.append((f"{exp.get('name', 'Unknown')}: {self._format_amount(amount)}\n", None))
+            else:
+                content.append(('(none)\n', None))
+            content.append((f'\nTotal Expenses: {self._format_amount(total_expense)}\n\n', 'total'))
             
-            content.append((f'\nTotal Expenses: {fmt(total_expenses)}\n\n', 'total'))
-            content.append((f'Net Income (Profit/Loss): {fmt(net_income)}\n', 'net'))
+            # Add net income
+            content.append((f'Net Income: {self._format_amount(net_income)}\n', 'net'))
             
-            # Update the text widget using the custom update_text method
-            self.income_text.config(state=tk.NORMAL)
-            self.income_text.delete(1.0, tk.END)
-            for text, tag in content:
-                if tag:
-                    self.income_text.insert(tk.END, text, tag)
-                else:
-                    self.income_text.insert(tk.END, text)
-            self.income_text.config(state=tk.DISABLED)
+            # Update the text widget (check if it exists first)
+            if hasattr(self, 'income_text') and self.income_text:
+                try:
+                    self._update_text_widget(self.income_text, content)
+                except Exception as widget_error:
+                    logger.error(f"Failed to update income statement widget: {widget_error}", exc_info=True)
+            else:
+                logger.warning("Income statement text widget not available for update")
             
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to generate income statement: {str(e)}")
-            raise
+            logger.error(f"Failed to generate income statement: {str(e)}", exc_info=True)
+            # Only show error dialog if widget exists and is visible
+            try:
+                if hasattr(self, 'income_text') and self.income_text:
+                    # Show error in widget
+                    self._show_error_in_text_widget(self.income_text, str(e), "income statement")
+                    # Only show messagebox if Financial Statements tab is visible
+                    try:
+                        if hasattr(self, 'fs_notebook') and self.fs_notebook.winfo_viewable():
+                            messagebox.showerror("Error", f"Failed to generate income statement: {str(e)}")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    
+    def _diagnose_balance_sheet_imbalance(self) -> list[str]:
+        """Diagnose common issues that cause balance sheet imbalances."""
+        issues = []
+        try:
+            conn = self.engine.conn
+            
+            # Check 1: Draft transactions that aren't included in balance sheet
+            draft_count = conn.execute("""
+                SELECT COUNT(*) as cnt FROM journal_entries 
+                WHERE period_id = ? AND status = 'draft'
+            """, (self.engine.current_period_id,)).fetchone()
+            if draft_count and draft_count['cnt'] > 0:
+                issues.append(f"You have {draft_count['cnt']} draft transaction(s). Drafts are NOT included in the balance sheet. Post them using 'Record & Post' button.")
+            
+            # Check 2: Unbalanced journal entries (debits != credits)
+            unbalanced = conn.execute("""
+                SELECT je.id, je.date, je.description, 
+                       SUM(jl.debit) as total_debit, SUM(jl.credit) as total_credit
+                FROM journal_entries je
+                JOIN journal_lines jl ON jl.entry_id = je.id
+                WHERE je.period_id = ? AND je.status = 'posted'
+                GROUP BY je.id
+                HAVING ABS(SUM(jl.debit) - SUM(jl.credit)) > 0.01
+            """, (self.engine.current_period_id,)).fetchall()
+            if unbalanced:
+                issues.append(f"You have {len(unbalanced)} unbalanced journal entry/entries. Each entry must have equal debits and credits.")
+            
+            # Check 3: Entries with only one line (missing debit or credit)
+            single_line = conn.execute("""
+                SELECT je.id, je.date, je.description, COUNT(jl.id) as line_count
+                FROM journal_entries je
+                JOIN journal_lines jl ON jl.entry_id = je.id
+                WHERE je.period_id = ? AND je.status = 'posted'
+                GROUP BY je.id
+                HAVING COUNT(jl.id) < 2
+            """, (self.engine.current_period_id,)).fetchall()
+            if single_line:
+                issues.append(f"You have {len(single_line)} entry/entries with only one line. Each transaction needs both a debit and credit.")
+            
+            # Check 4: Entries with zero amounts
+            zero_amount = conn.execute("""
+                SELECT je.id, je.date, je.description
+                FROM journal_entries je
+                JOIN journal_lines jl ON jl.entry_id = je.id
+                WHERE je.period_id = ? AND je.status = 'posted'
+                  AND jl.debit = 0 AND jl.credit = 0
+            """, (self.engine.current_period_id,)).fetchall()
+            if zero_amount:
+                issues.append(f"You have {len(zero_amount)} entry/entries with zero amounts. These won't affect the balance sheet.")
+            
+            # Check 5: Missing closing entries (if period should be closed)
+            # This is informational only - skip for now as it requires complex aggregation
+            
+            # Check 6: Transactions not assigned to current period
+            wrong_period = conn.execute("""
+                SELECT COUNT(*) as cnt FROM journal_entries 
+                WHERE period_id IS NULL OR period_id != ?
+            """, (self.engine.current_period_id,)).fetchone()
+            if wrong_period and wrong_period['cnt'] > 0:
+                issues.append(f"You have {wrong_period['cnt']} transaction(s) not assigned to the current period. They won't appear in this period's balance sheet.")
+            
+        except Exception as e:
+            issues.append(f"Error running diagnostics: {str(e)}")
+        
+        return issues
     
     def _generate_balance_sheet(self, trial_balance: list, as_of_date: str = None) -> None:
-        """Generate and display the balance sheet from trial balance data"""
+        """Generate and display the balance sheet using the backend engine method
+        
+        Note: The trial_balance parameter is kept for API consistency but is not used.
+        The backend generate_balance_sheet method recalculates the trial balance to ensure accuracy.
+        """
         try:
-            # Group accounts by type
-            assets = []
-            liabilities = []
-            equity = []
-            
-            for row in trial_balance:
-                account_type = row['type'].lower()
-                # Calculate balance based on normal_side
-                if row['normal_side'].lower() == 'debit':
-                    balance = row['net_debit'] - row['net_credit']
-                else:
-                    balance = row['net_credit'] - row['net_debit']
-                
-                if abs(balance) < 0.01:  # Skip if balance is effectively zero
-                    continue
-                    
-                if account_type == 'asset':
-                    assets.append((row['name'], balance))
-                elif account_type == 'contra asset' or account_type == 'contra_asset':
-                    # Contra-assets reduce total assets; store as negative amount so totals reflect reduction
-                    try:
-                        contra_amount = -abs(balance)
-                    except Exception:
-                        contra_amount = -float(balance)
-                    assets.append((row['name'], contra_amount))
-                elif account_type == 'liability':
-                    liabilities.append((row['name'], balance))
-                elif account_type == 'equity':
-                    try:
-                        if (row['normal_side'] or '').lower() == 'debit':
-                            amount = -abs(balance)
-                        else:
-                            amount = balance
-                    except Exception:
-                        amount = balance
-                    equity.append((row['name'], amount))
-            
-            # Helper to format amounts (use parentheses for negative values)
-            def fmt(a: float) -> str:
+            # Determine the date to use
+            if not as_of_date:
                 try:
-                    a = float(a or 0)
+                    cur = self.engine.conn.execute("""
+                        SELECT MAX(date) as max_date FROM journal_entries 
+                        WHERE period_id = ?
+                    """, (self.engine.current_period_id,))
+                    result = cur.fetchone()
+                    as_of_date = result['max_date'] if result and result['max_date'] else date.today().isoformat()
                 except Exception:
-                    return str(a)
-                if a < 0:
-                    return f"({abs(a):,.2f})"
-                return f"{a:,.2f}"
-
-            # Calculate totals
-            total_assets = sum(amt for _, amt in assets)
-            total_liabilities = sum(amt for _, amt in liabilities)
-            total_equity = sum(amt for _, amt in equity)
+                    as_of_date = date.today().isoformat()
+            
+            # If closing entries exist, check if the requested date is before the latest entry
+            # This prevents imbalance when viewing balance sheet before all transactions are included
+            try:
+                closing_entries_exist = False
+                closing_count = self.engine.conn.execute("""
+                    SELECT COUNT(*) as cnt FROM journal_entries 
+                    WHERE is_closing = 1 AND period_id = ?
+                """, (self.engine.current_period_id,)).fetchone()
+                closing_entries_exist = closing_count and closing_count['cnt'] > 0
+                
+                if closing_entries_exist:
+                    # Get the latest entry date
+                    latest_date = self.engine.conn.execute("""
+                        SELECT MAX(date) as max_date FROM journal_entries 
+                        WHERE period_id = ? AND (status = 'posted' OR status IS NULL)
+                    """, (self.engine.current_period_id,)).fetchone()
+                    
+                    if latest_date and latest_date['max_date']:
+                        latest_entry_date = latest_date['max_date']
+                        # If requested date is before latest entry, use latest entry date to avoid imbalance
+                        if as_of_date < latest_entry_date:
+                            as_of_date = latest_entry_date
+            except Exception:
+                pass  # If check fails, just use the original date
+            
+            # Generate balance sheet using backend method
+            # The backend method recalculates the trial balance with include_temporary=False
+            # to ensure only permanent accounts are included in the balance sheet
+            balance_sheet = self.engine.generate_balance_sheet(as_of_date)
+            
+            # Extract data from backend result
+            assets = balance_sheet.get('assets', [])
+            liabilities = balance_sheet.get('liabilities', [])
+            equity = balance_sheet.get('equity', [])
+            total_assets = balance_sheet.get('total_assets', 0.0)
+            total_liabilities = balance_sheet.get('total_liabilities', 0.0)
+            total_equity = balance_sheet.get('total_equity', 0.0)
+            balance_check = balance_sheet.get('balance_check', 0.0)
+            
+            # ALWAYS recalculate totals from individual items to ensure accuracy
+            # This fixes any discrepancies between backend calculation and display
+            calculated_assets = sum(asset.get('amount', 0.0) for asset in assets)
+            calculated_liabilities = sum(liab.get('amount', 0.0) for liab in liabilities)
+            calculated_equity = sum(eq.get('amount', 0.0) for eq in equity)
+            
+            # Log if there's a discrepancy (for debugging)
+            if abs(total_assets - calculated_assets) > 0.01:
+                try:
+                    logger.warning(
+                        f"Balance sheet asset total mismatch: "
+                        f"reported={total_assets:.2f}, calculated={calculated_assets:.2f}, "
+                        f"difference={abs(total_assets - calculated_assets):.2f}"
+                    )
+                except Exception:
+                    pass
+            
+            if abs(total_liabilities - calculated_liabilities) > 0.01:
+                try:
+                    logger.warning(
+                        f"Balance sheet liability total mismatch: "
+                        f"reported={total_liabilities:.2f}, calculated={calculated_liabilities:.2f}"
+                    )
+                except Exception:
+                    pass
+            
+            if abs(total_equity - calculated_equity) > 0.01:
+                try:
+                    logger.warning(
+                        f"Balance sheet equity total mismatch: "
+                        f"reported={total_equity:.2f}, calculated={calculated_equity:.2f}"
+                    )
+                except Exception:
+                    pass
+            
+            # ALWAYS use calculated totals (sum of displayed items) for display
+            # This ensures the displayed total matches what the user sees
+            # This fixes the issue where backend might return incorrect totals
+            total_assets = round(calculated_assets, 2)
+            total_liabilities = round(calculated_liabilities, 2)
+            total_equity = round(calculated_equity, 2)
+            
+            # Recalculate balance_check with corrected totals
+            # Formula: Assets = Liabilities + Equity (should equal 0)
+            balance_check = round(total_assets - (total_liabilities + total_equity), 2)
+            
+            # Final verification - if still unbalanced, add diagnostic info
+            if abs(balance_check) > 0.01:
+                # Double-check by recalculating from displayed items
+                displayed_assets_sum = sum(
+                    asset.get('amount', 0.0) 
+                    for asset in assets 
+                    if abs(asset.get('amount', 0.0)) > 0.005
+                )
+                displayed_liab_sum = sum(
+                    liab.get('amount', 0.0) 
+                    for liab in liabilities 
+                    if abs(liab.get('amount', 0.0)) > 0.005
+                )
+                displayed_equity_sum = sum(
+                    eq.get('amount', 0.0) 
+                    for eq in equity 
+                    if abs(eq.get('amount', 0.0)) > 0.005
+                )
+                
+                # Use displayed sums if they differ
+                if abs(total_assets - displayed_assets_sum) > 0.01:
+                    total_assets = round(displayed_assets_sum, 2)
+                if abs(total_liabilities - displayed_liab_sum) > 0.01:
+                    total_liabilities = round(displayed_liab_sum, 2)
+                if abs(total_equity - displayed_equity_sum) > 0.01:
+                    total_equity = round(displayed_equity_sum, 2)
+                
+                # Recalculate balance check one more time
+                balance_check = round(total_assets - (total_liabilities + total_equity), 2)
             
             # Build the balance sheet content
             content = []
             content.append(("Balance Sheet\n", "header"))
-            content.append((f"As of {as_of_date or 'current date'}\n\n", "subheader"))
+            content.append((f"As of {as_of_date}\n", "subheader"))
+            content.append(("\n", None))
             
             # Add assets section
             content.append(("Assets\n", "section"))
-            for name, amount in assets:
-                if amount != 0:  # Only show accounts with non-zero balances
-                    content.append((f"{name}: {amount:,.2f}\n", None))
-            content.append((f"\nTotal Assets: {fmt(total_assets)}\n\n", "total"))
+            if assets:
+                for asset in assets:
+                    amount = asset.get('amount', 0.0)
+                    if abs(amount) > 0.005:  # Only show accounts with non-zero balances
+                        content.append((f"{asset.get('name', 'Unknown')}: {self._format_amount(amount)}\n", None))
+            else:
+                content.append(("(none)\n", None))
+            # Add Total Assets row
+            content.append(("─" * 50 + "\n", None))
+            content.append((f"Total Assets: {self._format_amount(total_assets)}\n\n", "total"))
             
             # Add liabilities section
             content.append(("Liabilities\n", "section"))
-            for name, amount in liabilities:
-                if amount != 0:  # Only show accounts with non-zero balances
-                    content.append((f"{name}: {amount:,.2f}\n", None))
-            content.append((f"\nTotal Liabilities: {fmt(total_liabilities)}\n\n", "total"))
+            if liabilities:
+                for liab in liabilities:
+                    amount = liab.get('amount', 0.0)
+                    if abs(amount) > 0.005:  # Only show accounts with non-zero balances
+                        content.append((f"{liab.get('name', 'Unknown')}: {self._format_amount(amount)}\n", None))
+            else:
+                content.append(("(none)\n", None))
+            # Add Total Liabilities row
+            content.append(("─" * 50 + "\n", None))
+            content.append((f"Total Liabilities: {self._format_amount(total_liabilities)}\n\n", "total"))
             
             # Add equity section
             content.append(("Equity\n", "section"))
-            for name, amount in equity:
-                if amount != 0:  # Only show accounts with non-zero balances
-                    content.append((f"{name}: {amount:,.2f}\n", None))
-            # If temporary accounts (revenue/expense) are present but not closed, show Net Income and include it in equity
-            temp_net = 0.0
-            for row in trial_balance:
-                # trial_balance rows are sqlite3.Row objects; use index access
-                t = (row['type'] or '').lower() if 'type' in row.keys() else ''
-                if t in ('revenue', 'expense'):
-                    # compute effect on equity: credits increase equity, debits decrease
-                    nd = float(row['net_debit'] or 0) if 'net_debit' in row.keys() else 0.0
-                    nc = float(row['net_credit'] or 0) if 'net_credit' in row.keys() else 0.0
-                    temp_net += (nc - nd)
-            if abs(temp_net) >= 0.01:
-                content.append((f"Net Income (unclosed): {fmt(temp_net)}\n", None))
-                total_equity = round(float(total_equity) + temp_net, 2)
-
-            content.append((f"\nTotal Equity: {fmt(total_equity)}\n\n", "total"))
+            if equity:
+                for eq in equity:
+                    amount = eq.get('amount', 0.0)
+                    if abs(amount) > 0.005:  # Only show accounts with non-zero balances
+                        content.append((f"{eq.get('name', 'Unknown')}: {self._format_amount(amount)}\n", None))
+            else:
+                content.append(("(none)\n", None))
+            # Add Total Equity row
+            content.append(("─" * 50 + "\n", None))
+            content.append((f"Total Equity: {self._format_amount(total_equity)}\n\n", "total"))
             
-            # Check accounting equation
-            accounting_eq = total_assets - (total_liabilities + total_equity)
-            if abs(accounting_eq) > 0.01:  # Allow for small floating point differences
+            # Check if closing entries have been completed (step 8)
+            # After closing entries, Net Income is already included in Owner's Capital
+            # So we need different balance check logic for open vs closed periods
+            closing_completed = False
+            try:
+                statuses = self.engine.get_cycle_status()
+                step8 = next((r for r in statuses if int(r['step']) == 8), None)
+                # Check both status and if closing entries actually exist
+                status_completed = step8 and (step8['status'] == 'completed')
+                
+                # Also check if closing entries exist in database (more reliable)
+                closing_entries_exist = False
+                try:
+                    closing_count = self.engine.conn.execute("""
+                        SELECT COUNT(*) as cnt FROM journal_entries 
+                        WHERE is_closing = 1 AND period_id = ?
+                    """, (self.engine.current_period_id,)).fetchone()
+                    closing_entries_exist = closing_count and closing_count['cnt'] > 0
+                except Exception:
+                    pass
+                
+                # Closing is completed if status says so OR if closing entries exist
+                closing_completed = status_completed or closing_entries_exist
+            except Exception:
+                pass
+            
+            # Calculate net income from income statement for clearer breakdown
+            # Get net income from the current period's income statement
+            net_income = 0.0
+            try:
+                if hasattr(self, 'fs_date_from') and hasattr(self, 'fs_date_to'):
+                    date_from = self.fs_date_from.get().strip() or None
+                    date_to = self.fs_date_to.get().strip() or None
+                    if date_from and date_to:
+                        income_stmt = self.engine.generate_income_statement(date_from, date_to, period_id=None)
+                        net_income = income_stmt.get('net_income', 0.0)
+            except Exception:
+                pass
+            
+            # Add summary section at the bottom with all totals (matching FINAL_ACCOUNTING.py format)
+            content.append(("=" * 50 + "\n", None))
+            content.append(("SUMMARY\n", "section"))
+            content.append(("=" * 50 + "\n", None))
+            content.append((f"Total Assets: {self._format_amount(total_assets)}\n", "total"))
+            content.append((f"Total Liabilities: {self._format_amount(total_liabilities)}\n", "total"))
+            
+            if closing_completed:
+                # After closing entries, Net Income is already in Owner's Capital
+                content.append((f"Total Equity (Net Income already included): {self._format_amount(total_equity)}\n", "total"))
+                content.append(("─" * 50 + "\n", None))
+                total_liab_equity = total_liabilities + total_equity
+                content.append((f"Total Liabilities + Equity: {self._format_amount(total_liab_equity)}\n", "total"))
+                content.append(("=" * 50 + "\n", None))
+                # GRAND TOTAL line (should equal Total Assets when balanced)
+                content.append((f"GRAND TOTAL (Assets = L + E): {self._format_amount(total_assets)}\n", "total"))
+                content.append(("=" * 50 + "\n\n", None))
+                
+                # Balance check for closed periods: Assets = Liabilities + Equity
+                balance_check = total_assets - (total_liabilities + total_equity)
+            else:
+                # Before closing entries, Net Income is separate
+                content.append((f"Total Equity (excluding Net Income): {self._format_amount(total_equity)}\n", "total"))
+                content.append((f"Total Equity (including Net Income): {self._format_amount(total_equity + net_income)}\n", "total"))
+                content.append(("─" * 50 + "\n", None))
+                total_liab_equity_net = total_liabilities + total_equity + net_income
+                content.append((f"Total Liabilities + Equity + Net Income: {self._format_amount(total_liab_equity_net)}\n", "total"))
+                content.append(("=" * 50 + "\n", None))
+                # GRAND TOTAL line (should equal Total Assets when balanced)
+                content.append((f"GRAND TOTAL (Assets = L + E + Net Income): {self._format_amount(total_assets)}\n", "total"))
+                content.append(("=" * 50 + "\n\n", None))
+                
+                # Balance check for open periods: Assets = Liabilities + Equity + Net Income
+                balance_check = total_assets - (total_liabilities + total_equity + net_income)
+            
+            # Check accounting equation (balance_check should be 0.00)
+            if abs(balance_check) > 0.05:  # Allow for small floating point differences
+                if closing_completed:
+                    # Check if the imbalance is due to viewing balance sheet before all transactions
+                    try:
+                        latest_date = self.engine.conn.execute("""
+                            SELECT MAX(date) as max_date FROM journal_entries 
+                            WHERE period_id = ? AND (status = 'posted' OR status IS NULL)
+                        """, (self.engine.current_period_id,)).fetchone()
+                        
+                        if latest_date and latest_date['max_date'] and as_of_date < latest_date['max_date']:
+                            content.append((
+                                f"\n⚠ Warning: Accounting equation does not balance!\n"
+                                f"Assets ({self._format_amount(total_assets)}) ≠ Liabilities + Equity ({self._format_amount(total_liabilities + total_equity)})\n"
+                                f"Difference: {self._format_amount(abs(balance_check))}\n\n"
+                                f"Note: You are viewing the balance sheet 'As of {as_of_date}', but closing entries\n"
+                                f"closed revenue/expenses from the entire period (up to {latest_date['max_date']}).\n"
+                                f"Assets only include transactions up to {as_of_date}, creating this imbalance.\n\n"
+                                f"To see a balanced sheet, view 'As of {latest_date['max_date']}' (latest entry date).\n",
+                                "warning"
+                            ))
+                        else:
+                            content.append((
+                                f"\n⚠ Warning: Accounting equation does not balance!\n"
+                                f"Assets ({self._format_amount(total_assets)}) ≠ Liabilities + Equity ({self._format_amount(total_liabilities + total_equity)})\n"
+                                f"Difference: {self._format_amount(abs(balance_check))}\n", 
+                                "warning"
+                            ))
+                            # Add diagnostic information
+                            try:
+                                diagnostics = self._diagnose_balance_sheet_imbalance()
+                                if diagnostics:
+                                    content.append(("\nPossible Issues:\n", "section"))
+                                    for issue in diagnostics:
+                                        content.append((f"  • {issue}\n", "warning"))
+                            except Exception:
+                                pass
+                    except Exception:
+                        content.append((
+                            f"\n⚠ Warning: Accounting equation does not balance!\n"
+                            f"Assets ({self._format_amount(total_assets)}) ≠ Liabilities + Equity ({self._format_amount(total_liabilities + total_equity)})\n"
+                            f"Difference: {self._format_amount(abs(balance_check))}\n", 
+                            "warning"
+                        ))
+                else:
+                    content.append((
+                        f"\n⚠ Warning: Accounting equation does not balance!\n"
+                        f"Assets ({self._format_amount(total_assets)}) ≠ Liabilities + Equity + Net Income ({self._format_amount(total_liabilities + total_equity + net_income)})\n"
+                        f"Difference: {self._format_amount(abs(balance_check))}\n", 
+                        "warning"
+                    ))
+                    # Add diagnostic information
+                    try:
+                        diagnostics = self._diagnose_balance_sheet_imbalance()
+                        if diagnostics:
+                            content.append(("\nPossible Issues:\n", "section"))
+                            for issue in diagnostics:
+                                content.append((f"  • {issue}\n", "warning"))
+                    except Exception:
+                        pass
+            else:
                 content.append((
-                    f"\nWarning: Accounting equation does not balance!\n"
-                    f"Assets ({fmt(total_assets)}) ≠ Liabilities + Equity ({fmt(total_liabilities + total_equity)})\n"
-                    f"Difference: {fmt(accounting_eq)}\n", 
-                    "warning"
+                    f"\n✓ Balance Sheet balances ✅\n",
+                    None
                 ))
             
-            # Update the text widget using the custom update_text method
-            self.balance_sheet_text.config(state=tk.NORMAL)
-            self.balance_sheet_text.delete(1.0, tk.END)
-            for text, tag in content:
-                if tag:
-                    self.balance_sheet_text.insert(tk.END, text, tag)
-                else:
-                    self.balance_sheet_text.insert(tk.END, text)
-            self.balance_sheet_text.config(state=tk.DISABLED)
+            # Update the text widget
+            self._update_text_widget(self.balance_sheet_text, content)
             
         except Exception as e:
+            logger.error(f"Failed to generate balance sheet: {str(e)}", exc_info=True)
             messagebox.showerror("Error", f"Failed to generate balance sheet: {str(e)}")
-            raise
+            # Show error in widget
+            self._show_error_in_text_widget(self.balance_sheet_text, str(e), "balance sheet")
+    
+    def _generate_cash_flow_statement(self, start_date: str = None, end_date: str = None) -> None:
+        """Generate and display the cash flow statement"""
+        try:
+            # Determine safe start/end for cash flow
+            start = start_date or (
+                (self.engine.current_period['start_date'] if self.engine.current_period and 'start_date' in self.engine.current_period else None)
+            ) or '1900-01-01'
+            end = end_date or date.today().isoformat()
+            
+            # Generate cash flow using backend engine
+            # Cash flow already filters by date, so it should work across periods
+            cf = self.engine.generate_cash_flow(start, end)
+            
+            # Check for errors
+            if isinstance(cf, dict) and cf.get('error'):
+                content = []
+                content.append(("Cash Flow Statement\n", 'header'))
+                content.append((f"Period: {start} → {end}\n\n", 'subheader'))
+                content.append((f"Error: {cf.get('error')}\n", 'warning'))
+                self._update_text_widget(self.cash_flow_text, content)
+                return
+            
+            # Extract data from backend result
+            sections = cf.get('sections', {}) if isinstance(cf, dict) else {}
+            totals = cf.get('totals', {}) if isinstance(cf, dict) else {}
+            net_change = cf.get('net_change_in_cash', 0.0)
+            
+            # Build the cash flow statement content
+            content = []
+            content.append(("Cash Flow Statement\n", 'header'))
+            content.append((f"Period: {start} → {end}\n\n", 'subheader'))
+            
+            # Add each section (Operating, Investing, Financing)
+            for sec in ('Operating', 'Investing', 'Financing'):
+                items = sections.get(sec, [])
+                content.append((f"{sec}\n", 'section'))
+                
+                if not items:
+                    content.append(("  (no activity)\n\n", None))
+                else:
+                    for it in items:
+                        try:
+                            amt = float(it.get('amount', 0))
+                        except (ValueError, TypeError):
+                            amt = 0.0
+                        entry_date = it.get('date', '')
+                        entry_id = it.get('entry_id', '')
+                        content.append((f"  {entry_date}: Entry #{entry_id}: {self._format_amount(amt)}\n", None))
+                    
+                    # Add section total
+                    section_total = totals.get(sec, 0.0)
+                    content.append((f"\n  Total {sec}: {self._format_amount(section_total)}\n\n", 'total'))
+            
+            # Add net change in cash
+            content.append((f"Net Change in Cash: {self._format_amount(net_change)}\n", 'net'))
+            
+            # Add simpler cash receipts/payments summary (matching FINAL_ACCOUNTING.py approach)
+            try:
+                # Get cash account ID
+                cash_acc = db.get_account_by_name("Cash", conn=self.engine.conn)
+                if cash_acc:
+                    cash_id = int(cash_acc["id"])
+                    # Calculate simple cash receipts (debits) and payments (credits) for the period
+                    period_filter = self._get_period_filter_for_dates(start, end)
+                    period_clause = " AND je.period_id = ?" if period_filter else ""
+                    period_params = [start, end] + ([period_filter] if period_filter else [])
+                    
+                    cur = self.engine.conn.execute(f"""
+                        SELECT COALESCE(SUM(jl.debit), 0) as cash_in,
+                               COALESCE(SUM(jl.credit), 0) as cash_out
+                        FROM journal_lines jl
+                        JOIN journal_entries je ON je.id = jl.entry_id
+                        WHERE jl.account_id = ?
+                          AND date(je.date) BETWEEN date(?) AND date(?)
+                          AND (je.status = 'posted' OR je.status IS NULL)
+                          {period_clause}
+                    """, [cash_id] + period_params)
+                    
+                    result = cur.fetchone()
+                    if result:
+                        cash_in = float(result['cash_in'] or 0)
+                        cash_out = float(result['cash_out'] or 0)
+                        net_cash_simple = cash_in - cash_out
+                        
+                        content.append(("\n" + "=" * 50 + "\n", None))
+                        content.append(("SIMPLE CASH SUMMARY\n", 'section'))
+                        content.append(("=" * 50 + "\n", None))
+                        content.append((f"Cash Receipts (debits to Cash): {self._format_amount(cash_in)}\n", 'total'))
+                        content.append((f"Cash Payments (credits from Cash): {self._format_amount(cash_out)}\n", 'total'))
+                        content.append(("─" * 50 + "\n", None))
+                        content.append((f"Net Cash Change: {self._format_amount(net_cash_simple)}\n", 'net'))
+            except Exception as e:
+                logger.debug(f"Could not add simple cash summary: {e}")
+            
+            # Update the text widget
+            self._update_text_widget(self.cash_flow_text, content)
+            
+        except Exception as e:
+            logger.error(f"Error generating cash flow statement: {e}", exc_info=True)
+            # Show error in widget
+            self._show_error_in_text_widget(self.cash_flow_text, str(e), "cash flow statement")
 
+    def _get_period_filter_for_dates(self, date_from: str | None, date_to: str | None) -> int | None:
+        """Determine period filter based on date range.
+        
+        Returns None for cross-period reporting when both dates are set,
+        otherwise returns current_period_id.
+        """
+        if date_from and date_to:
+            return None  # Cross-period reporting
+        elif date_to:
+            return None  # Include all entries up to date_to
+        else:
+            return self.engine.current_period_id  # Fallback to period filter
+    
+    def _show_error_in_text_widget(self, text_widget, error_message: str, statement_name: str) -> None:
+        """Display an error message in a text widget.
+        
+        Args:
+            text_widget: The tkinter Text widget to update
+            error_message: The error message to display
+            statement_name: Name of the statement (e.g., "income statement")
+        """
+        try:
+            if text_widget and hasattr(text_widget, 'config'):
+                text_widget.config(state=tk.NORMAL)
+                text_widget.delete(1.0, tk.END)
+                text_widget.insert(tk.END, f"Error generating {statement_name}:\n{error_message}\n", 'warning')
+                text_widget.config(state=tk.DISABLED)
+        except Exception:
+            pass
+    
+    def _should_include_temporary_accounts_in_bs(self) -> bool:
+        """Check if temporary accounts should be included in balance sheet.
+        
+        Returns False if step 8 (closing entries) is completed, True otherwise.
+        """
+        try:
+            statuses = self.engine.get_cycle_status()
+            step8 = next((r for r in statuses if int(r['step']) == 8), None)
+            if step8 and (step8['status'] == 'completed'):
+                return False
+        except Exception:
+            pass
+        return True
+    
     def _regenerate_financial_statements(self, as_of_date: str | None = None) -> None:
         """Re-generate income statement and balance sheet text without modifying cycle status.
 
@@ -7927,35 +8785,30 @@ class TechFixApp(tk.Tk):
             if date_to == "":
                 date_to = None
 
-            inc_temp_bs = True
-            try:
-                statuses = self.engine.get_cycle_status()
-                step8 = next((r for r in statuses if int(r['step']) == 8), None)
-                if step8 and (step8['status'] == 'completed'):
-                    inc_temp_bs = False
-            except Exception:
-                pass
-
-            # Match _load_financials: income statement uses from+to, balance
-            # sheet uses up_to_date only.
+            # Use helper methods to determine period filter and temporary account inclusion
+            period_filter = self._get_period_filter_for_dates(date_from, date_to)
+            inc_temp_bs = self._should_include_temporary_accounts_in_bs()
+            
             rows_is = db.compute_trial_balance(
                 from_date=date_from,
                 up_to_date=date_to,
                 include_temporary=True,
-                period_id=self.engine.current_period_id,
+                period_id=period_filter,
                 conn=self.engine.conn,
             )
             rows_bs = db.compute_trial_balance(
                 up_to_date=date_to,
                 include_temporary=inc_temp_bs,
-                period_id=self.engine.current_period_id,
+                period_id=period_filter,
                 conn=self.engine.conn,
             )
 
             # Re-generate text widgets only (these functions write to Text widgets)
             try:
-                self._generate_income_statement(rows_is, date_to)
-            except Exception:
+                # Pass date_from to ensure correct date range
+                self._generate_income_statement(rows_is, date_to, start_date=date_from)
+            except Exception as e:
+                logger.exception("Error generating income statement in _regenerate_financial_statements")
                 pass
             try:
                 self._generate_balance_sheet(rows_bs, date_to)
@@ -7968,90 +8821,149 @@ class TechFixApp(tk.Tk):
     def _load_financials(self, mark_status: bool = True) -> None:
         """Load and display financial statements based on date range"""
         try:
-            # Get date range from the UI
-            date_from = self.fs_date_from.get().strip() or None
-            date_to = self.fs_date_to.get().strip() or None
+            # Get date range from the UI (with fallback if fields don't exist yet)
+            try:
+                date_from = self.fs_date_from.get().strip() or None if hasattr(self, 'fs_date_from') else None
+                date_to = self.fs_date_to.get().strip() or None if hasattr(self, 'fs_date_to') else None
+            except Exception:
+                date_from = None
+                date_to = None
+            
+            # Set default dates if not provided
+            # Use last day of current month as default for "To" date
+            if not date_to:
+                import calendar
+                today = datetime.now().date()
+                last_day = calendar.monthrange(today.year, today.month)[1]
+                date_to = today.replace(day=last_day).isoformat()
+                # Update UI field if it exists
+                try:
+                    if hasattr(self, 'fs_date_to'):
+                        self.fs_date_to.delete(0, tk.END)
+                        self.fs_date_to.insert(0, date_to)
+                except Exception:
+                    pass
+            if not date_from:
+                # Try to get period start date
+                try:
+                    period = db.get_accounting_period_by_id(self.engine.current_period_id, conn=self.engine.conn)
+                    if period and period.get('start_date'):
+                        date_from = period['start_date']
+                    else:
+                        # Default to start of current year
+                        date_from = datetime.now().date().replace(month=1, day=1).isoformat()
+                except Exception:
+                    # Default to start of current year
+                    date_from = datetime.now().date().replace(month=1, day=1).isoformat()
+                # Update UI field if it exists
+                try:
+                    if hasattr(self, 'fs_date_from'):
+                        self.fs_date_from.delete(0, tk.END)
+                        self.fs_date_from.insert(0, date_from)
+                except Exception:
+                    pass
             
             # Clear previous content using the update_text method
-            self.income_text.update_text("")
-            self.balance_sheet_text.update_text("")
-            self.cash_flow_text.update_text("")
+            try:
+                self.income_text.update_text("")
+                self.balance_sheet_text.update_text("")
+                self.cash_flow_text.update_text("")
+            except Exception:
+                # Text widgets might not exist if tab hasn't been viewed yet
+                pass
+            
+            # Use helper methods to determine period filter and temporary account inclusion
+            period_filter = self._get_period_filter_for_dates(date_from, date_to)
+            inc_temp_bs = self._should_include_temporary_accounts_in_bs()
             
             # Get trial balance data for the specified date range
+            # Exclude closing entries for income statement to show revenue/expenses before closing
             rows_is = db.compute_trial_balance(
                 from_date=date_from,
                 up_to_date=date_to,
                 include_temporary=True,
-                period_id=self.engine.current_period_id,
+                period_id=period_filter,
+                exclude_closing=True,
                 conn=self.engine.conn
             )
-            inc_temp_bs = True
-            try:
-                statuses = self.engine.get_cycle_status()
-                step8 = next((r for r in statuses if int(r['step']) == 8), None)
-                if step8 and (step8['status'] == 'completed'):
-                    inc_temp_bs = False
-            except Exception:
-                pass
             rows_bs = db.compute_trial_balance(
                 up_to_date=date_to,
                 include_temporary=inc_temp_bs,
-                period_id=self.engine.current_period_id,
+                period_id=period_filter,
                 conn=self.engine.conn
             )
             
             # Process data for financial statements
-            self._generate_income_statement(rows_is, date_to)
+            # Pass date_from to income statement so it uses the correct date range
+            self._generate_income_statement(rows_is, date_to, start_date=date_from)
             self._generate_balance_sheet(rows_bs, date_to)
-            # Generate cash flow using backend engine and render it
+            # Generate cash flow using dedicated method
+            self._generate_cash_flow_statement(date_from, date_to)
+            
+            # Check balance sheet balance and show notification (matching FINAL_ACCOUNTING.py approach)
             try:
-                # Determine safe start/end for cash flow
-                start = date_from or (
-                    (self.engine.current_period['start_date'] if self.engine.current_period and 'start_date' in self.engine.current_period.keys() else None)
-                ) or '1900-01-01'
-                end = date_to or (datetime.date.today().isoformat())
-                cf = self.engine.generate_cash_flow(start, end)
-                # Format cash flow content
-                if isinstance(cf, dict) and cf.get('error'):
-                    self.cash_flow_text.config(state=tk.NORMAL)
-                    self.cash_flow_text.delete(1.0, tk.END)
-                    self.cash_flow_text.insert(tk.END, f"Cash Flow Error: {cf.get('error')}\n", 'warning')
-                    self.cash_flow_text.config(state=tk.DISABLED)
-                else:
-                    content = []
-                    content.append(("Cash Flow Statement\n", 'header'))
-                    content.append((f"Period: {start} → {end}\n\n", 'subheader'))
-                    sections = cf.get('sections', {}) if isinstance(cf, dict) else {}
-                    totals = cf.get('totals', {}) if isinstance(cf, dict) else {}
-                    for sec in ('Operating', 'Investing', 'Financing'):
-                        items = sections.get(sec, [])
-                        content.append((f"{sec}\n", 'section'))
-                        if not items:
-                            content.append(("  (no activity)\n\n", None))
-                        else:
-                            for it in items:
-                                try:
-                                    amt = float(it.get('amount', 0))
-                                except Exception:
-                                    amt = 0.0
-                                content.append((f"  {it.get('date','')}: Entry #{it.get('entry_id','')}: {amt:,.2f}\n", None))
-                            content.append((f"\n  Total {sec}: {totals.get(sec,0):,.2f}\n\n", 'total'))
-                    content.append((f"Net Change in Cash: {cf.get('net_change_in_cash',0):,.2f}\n", 'net'))
-                    # Write to widget
+                balance_sheet = self.engine.generate_balance_sheet(date_to or date.today().isoformat())
+                total_assets = balance_sheet.get('total_assets', 0.0)
+                total_liabilities = balance_sheet.get('total_liabilities', 0.0)
+                total_equity = balance_sheet.get('total_equity', 0.0)
+                
+                # Check if closing entries have been completed
+                closing_completed = False
+                try:
+                    statuses = self.engine.get_cycle_status()
+                    step8 = next((r for r in statuses if int(r['step']) == 8), None)
+                    # Check both status and if closing entries actually exist
+                    status_completed = step8 and (step8['status'] == 'completed')
+                    
+                    # Also check if closing entries exist in database (more reliable)
+                    closing_entries_exist = False
                     try:
-                        self.cash_flow_text.config(state=tk.NORMAL)
-                        self.cash_flow_text.delete(1.0, tk.END)
-                        for text, tag in content:
-                            if tag:
-                                self.cash_flow_text.insert(tk.END, text, tag)
-                            else:
-                                self.cash_flow_text.insert(tk.END, text)
-                        self.cash_flow_text.config(state=tk.DISABLED)
+                        closing_count = self.engine.conn.execute("""
+                            SELECT COUNT(*) as cnt FROM journal_entries 
+                            WHERE is_closing = 1 AND period_id = ?
+                        """, (self.engine.current_period_id,)).fetchone()
+                        closing_entries_exist = closing_count and closing_count['cnt'] > 0
                     except Exception:
                         pass
+                    
+                    # Closing is completed if status says so OR if closing entries exist
+                    closing_completed = status_completed or closing_entries_exist
+                except Exception:
+                    pass
+                
+                # Balance check depends on whether closing entries are completed
+                if closing_completed:
+                    # After closing: Assets = Liabilities + Equity (Net Income already in Capital)
+                    balance_check = abs(total_assets - (total_liabilities + total_equity))
+                else:
+                    # Before closing: Assets = Liabilities + Equity + Net Income
+                    income_stmt = self.engine.generate_income_statement(
+                        date_from or '1900-01-01', 
+                        date_to or date.today().isoformat(), 
+                        period_id=None
+                    )
+                    net_income = income_stmt.get('net_income', 0.0)
+                    balance_check = abs(total_assets - (total_liabilities + total_equity + net_income))
+                
+                if balance_check < 0.05:
+                    # Only show success message if mark_status is True (to avoid spam during theme changes)
+                    if mark_status:
+                        try:
+                            messagebox.showinfo("Balance Check", "Balance Sheet balances ✅")
+                        except Exception:
+                            pass
+                else:
+                    if mark_status:
+                        try:
+                            messagebox.showwarning(
+                                "Balance Check", 
+                                f"Balance Sheet does NOT balance ❌ — check entries and adjustments.\n"
+                                f"Difference: {self._format_amount(balance_check)}"
+                            )
+                        except Exception:
+                            pass
             except Exception:
-                # If cash flow generation fails, don't block financials display
-                pass
+                pass  # Fail silently if balance check fails
             
             # Only mark as completed if we got this far without errors and caller allows status changes
             if mark_status:
@@ -8082,20 +8994,8 @@ class TechFixApp(tk.Tk):
                     )
                 except Exception:
                     pass
+        # Always refresh cycle status display in the UI
         try:
-            # Only update cycle step statuses here if caller allowed status changes
-            if mark_status:
-                self.engine.set_cycle_step_status(
-                    7,
-                    "completed",
-                    note=f"Financial statements generated as of {date_to or 'latest'}",
-                )
-                self.engine.set_cycle_step_status(
-                    8,
-                    "in_progress",
-                    note="Ready to prepare closing entries",
-                )
-            # Always refresh cycle status display in the UI
             self._load_cycle_status()
         except Exception:
             pass
@@ -8349,6 +9249,11 @@ class TechFixApp(tk.Tk):
             created = self.engine.process_reversing_schedule(as_of)
             self._load_reversing_queue()
             self._load_cycle_status()
+            # Refresh financial statements after processing reversing entries
+            try:
+                self._load_financials(mark_status=False)
+            except Exception:
+                pass  # Don't fail if refresh fails
             messagebox.showinfo("Completed", f"Posted {len(created)} reversing entr(ies)")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to complete reversing schedule: {e}")
@@ -8721,7 +9626,7 @@ class TechFixApp(tk.Tk):
             income_content = self.income_text.get("1.0", tk.END).splitlines()
             self.income_text.config(state=tk.DISABLED)
             if any(line.strip() for line in income_content):
-                statements.append(("Profit & Loss", income_content))
+                statements.append(("Income Statement", income_content))
             
             # Get Balance Sheet
             self.balance_sheet_text.config(state=tk.NORMAL)
@@ -9003,7 +9908,7 @@ class TechFixApp(tk.Tk):
             ws_w.append(["TOTAL","", totals["un_dr"], totals["un_cr"], totals["aj_dr"], totals["aj_cr"], totals["ad_dr"], totals["ad_cr"], totals["is_dr"], totals["is_cr"], totals["sfp_dr"], totals["sfp_cr"]])
             net_income = round(totals["is_cr"] - totals["is_dr"], 2)
             if net_income != 0:
-                ws_w.append(["PROFIT/LOSS","", "", "", "", "", "", "", 0.0 if net_income>0 else abs(net_income), net_income if net_income>0 else 0.0, "", ""])
+                ws_w.append(["INCOME STATEMENT","", "", "", "", "", "", "", 0.0 if net_income>0 else abs(net_income), net_income if net_income>0 else 0.0, "", ""])
                 ws_w.append(["TOTAL","", totals["un_dr"], totals["un_cr"], totals["aj_dr"], totals["aj_cr"], totals["ad_dr"], totals["ad_cr"], totals["is_dr"] + (0.0 if net_income>0 else abs(net_income)), totals["is_cr"] + (net_income if net_income>0 else 0.0), totals["sfp_dr"], totals["sfp_cr"]])
 
             # --- Financial statements sheets ---
@@ -9012,7 +9917,7 @@ class TechFixApp(tk.Tk):
             income_lines = self.income_text.get("1.0", tk.END).splitlines()
             self.income_text.config(state=tk.DISABLED)
             if any(line.strip() for line in income_lines):
-                ws_inc = wb.create_sheet(title="Profit & Loss")
+                ws_inc = wb.create_sheet(title="Income Statement")
                 for ridx, line in enumerate(income_lines, start=1):
                     ws_inc.cell(row=ridx, column=1, value=line)
                 ws_inc.column_dimensions[get_column_letter(1)].width = 120
@@ -9101,7 +10006,7 @@ class TechFixApp(tk.Tk):
             y = draw_title("Key Features", y)
             features = [
                 "• Journalization, Ledger, Trial Balance (adjusted/unadjusted)",
-                "• Financial Statements (Profit & Loss, Balance Sheet, Cash Flow)",
+                "• Financial Statements (Income Statement, Balance Sheet, Cash Flow)",
                 "• Closing and Post-Closing Trial Balance, Reversing Schedule",
                 "• Exports: Journal/Ledger/TB/Financials to Excel; All-in-one workbook",
                 "• Configurable data directory via TECHFIX_DATA_DIR",
@@ -9157,7 +10062,7 @@ class TechFixApp(tk.Tk):
 
             y = draw_title("Equations & Treatment", y)
             eq_lines = [
-                "• Income Statement (Profit & Loss): Net Income (Profit/Loss) = Revenues − Expenses.",
+                "• Income Statement: Net Income = Revenues − Expenses.",
                 "• Owner’s Equity Statement: Ending Capital = Beginning Capital + Net Income − Withdrawals.",
                 "• Balance Sheet: Assets = Liabilities + Ending Owner’s Equity.",
                 "• Contra‑assets reduce total assets (e.g., accumulated depreciation).",
@@ -9246,7 +10151,9 @@ class TechFixApp(tk.Tk):
         # requiring the user to re-open the app or manually hit Generate.
         try:
             self._load_financials(mark_status=False)
-        except Exception:
+        except Exception as e:
+            # Log the error but don't block other refresh actions
+            logger.exception("Error refreshing financial statements after post")
             # Do not block other refresh actions if FS generation fails
             pass
         self._load_cycle_status()

@@ -124,7 +124,7 @@ def build_worksheet():
     ws.append(['TOTAL','', total['un_dr'], total['un_cr'], total['aj_dr'], total['aj_cr'], total['ad_dr'], total['ad_cr'], total['is_dr'], total['is_cr'], total['sfp_dr'], total['sfp_cr']])
     net_income = round(total['is_cr'] - total['is_dr'], 2)
     if net_income != 0:
-        ws.append(['PROFIT/LOSS','', '', '', '', '', '', '', 0.0 if net_income>0 else abs(net_income), net_income if net_income>0 else 0.0, '', ''])
+        ws.append(['INCOME STATEMENT','', '', '', '', '', '', '', 0.0 if net_income>0 else abs(net_income), net_income if net_income>0 else 0.0, '', ''])
         ws.append(['TOTAL','', total['un_dr'], total['un_cr'], total['aj_dr'], total['aj_cr'], total['ad_dr'], total['ad_cr'], total['is_dr'] + (0.0 if net_income>0 else abs(net_income)), total['is_cr'] + (net_income if net_income>0 else 0.0), total['sfp_dr'], total['sfp_cr']])
 
     out_path = Path(os.path.dirname(__file__)) / '..' / 'worksheet.xlsx'

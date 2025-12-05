@@ -1107,6 +1107,7 @@ def seed_chart_of_accounts(conn: Optional[sqlite3.Connection] = None) -> None:
             ("103", "Input Tax", "Asset", "Debit", 1),
             ("104", "Office Equipment", "Asset", "Debit", 1),
             ("105", "Accumulated Depreciation", "Contra Asset", "Credit", 1),
+            ("106", "Accumulated Depreciation - Equipment", "Contra Asset", "Credit", 1),
             ("124", "Supplies", "Asset", "Debit", 1),
 
             ("201", "Accounts Payable", "Liability", "Credit", 1),
@@ -1179,8 +1180,13 @@ def insert_journal_entry(
     if not conn:
         conn = get_connection()
     try:
-        total_debits = sum(d for _, d, _ in lines)
-        total_credits = sum(c for _, _, c in lines)
+        # Convert to list to check if empty and allow multiple iterations
+        lines_list = list(lines)
+        if not lines_list:
+            raise ValueError("Journal entry must have at least one line (debit or credit).")
+        
+        total_debits = sum(d for _, d, _ in lines_list)
+        total_credits = sum(c for _, _, c in lines_list)
         if round(total_debits - total_credits, 2) != 0:
             raise ValueError("Entry is not balanced: debits must equal credits.")
 
@@ -1239,7 +1245,7 @@ def insert_journal_entry(
             ),
         )
         entry_id = cur.lastrowid
-        for account_id, debit, credit in lines:
+        for account_id, debit, credit in lines_list:
             cur.execute(
                 """
                 INSERT INTO journal_lines(entry_id, account_id, debit, credit)
@@ -1403,6 +1409,48 @@ def set_current_period(period_id: int, *, conn: Optional[sqlite3.Connection] = N
     try:
         conn.execute("UPDATE accounting_periods SET is_current=0")
         conn.execute("UPDATE accounting_periods SET is_current=1 WHERE id=?", (period_id,))
+        conn.commit()
+        ensure_cycle_steps(period_id, conn=conn)
+    finally:
+        if not owned:
+            conn.close()
+
+
+def realign_period(
+    period_id: int,
+    *,
+    name: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    set_as_current: bool = True,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    """
+    Update an accounting period's dates/name and optionally mark it current.
+    Useful when entries were posted outside the original period range.
+    """
+    owned = conn is not None
+    if not conn:
+        conn = get_connection()
+    try:
+        fields = []
+        params: list[Any] = []
+        if name is not None:
+            fields.append("name = ?")
+            params.append(name)
+        if start_date is not None:
+            fields.append("start_date = ?")
+            params.append(start_date)
+        if end_date is not None:
+            fields.append("end_date = ?")
+            params.append(end_date)
+        # Always keep the period open when realigning manually.
+        fields.append("is_closed = 0")
+        params.append(period_id)
+        conn.execute(f"UPDATE accounting_periods SET {', '.join(fields)} WHERE id = ?", params)
+        if set_as_current:
+            conn.execute("UPDATE accounting_periods SET is_current = 0 WHERE id <> ?", (period_id,))
+            conn.execute("UPDATE accounting_periods SET is_current = 1 WHERE id = ?", (period_id,))
         conn.commit()
         ensure_cycle_steps(period_id, conn=conn)
     finally:
@@ -1871,7 +1919,7 @@ def get_account_by_name(name: str, conn: Optional[sqlite3.Connection] = None) ->
 
 
 def compute_trial_balance(
-    *, from_date: Optional[str] = None, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None
+    *, from_date: Optional[str] = None, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, exclude_closing: bool = False, conn: Optional[sqlite3.Connection] = None
 ) -> list[sqlite3.Row]:
     owned = conn is not None
     if not conn:
@@ -1894,7 +1942,13 @@ def compute_trial_balance(
             where_extra += " AND je.period_id = ?"
             params.append(period_id)
 
+        # Exclude closing entries if requested (for income statement calculations)
+        closing_filter = ""
+        if exclude_closing:
+            closing_filter = "AND (je.is_closing = 0 OR je.is_closing IS NULL)"
+
         # Compute a signed balance then split into non-negative net_debit / net_credit
+        # Only include posted entries for accurate balances
         balance_expr = "(COALESCE(SUM(jl.debit),0) - COALESCE(SUM(jl.credit),0))"
         sql = f"""
             SELECT a.id as account_id, a.code, a.name, a.type, a.normal_side,
@@ -1903,7 +1957,9 @@ def compute_trial_balance(
             FROM accounts a
             LEFT JOIN journal_lines jl ON jl.account_id = a.id
             LEFT JOIN journal_entries je ON je.id = jl.entry_id
-            WHERE a.is_active = 1 {temp_filter} {where_extra}
+            WHERE a.is_active = 1 
+              AND (je.status = 'posted' OR je.status IS NULL OR je.id IS NULL)
+              {temp_filter} {where_extra} {closing_filter}
             GROUP BY a.id, a.code, a.name, a.type, a.normal_side
             ORDER BY a.code
         """
