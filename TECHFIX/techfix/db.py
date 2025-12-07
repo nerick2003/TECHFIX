@@ -198,7 +198,10 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             full_name TEXT,
             role_id INTEGER REFERENCES roles(id),
             company_id INTEGER REFERENCES companies(id),
-            is_active INTEGER NOT NULL DEFAULT 1
+            is_active INTEGER NOT NULL DEFAULT 1,
+            password_hash TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_login TEXT
         );
 
         CREATE TABLE IF NOT EXISTS user_preferences (
@@ -321,11 +324,35 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             authorization_level INTEGER NOT NULL DEFAULT 0,
             reversed_entry_id INTEGER
         );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'info',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            read_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            query TEXT NOT NULL,
+            search_type TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """
     )
 
 
 def _apply_schema_updates(conn: sqlite3.Connection) -> None:
+    # User authentication columns
+    _ensure_column(conn, "users", "password_hash TEXT")
+    _ensure_column(conn, "users", "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    _ensure_column(conn, "users", "last_login TEXT")
+    
     # Core journal / periods / cycle tables and columns
     _ensure_column(conn, "journal_entries", "document_ref TEXT")
     _ensure_column(conn, "journal_entries", "external_ref TEXT")
@@ -645,6 +672,39 @@ def _apply_schema_updates(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "reversing_entry_queue", "notes TEXT")
     _ensure_column(conn, "reversing_entry_queue", "approval_required INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "reversing_entry_queue", "authorization_level INTEGER NOT NULL DEFAULT 0")
+    
+    # Notifications table
+    _ensure_table(
+        conn,
+        "notifications",
+        """
+        CREATE TABLE notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'info',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            read_at TEXT
+        )
+        """,
+    )
+    
+    # Search history table
+    _ensure_table(
+        conn,
+        "search_history",
+        """
+        CREATE TABLE search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            query TEXT NOT NULL,
+            search_type TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
     _ensure_column(conn, "reversing_entry_queue", "reversed_entry_id INTEGER")
 
     _ensure_table(
@@ -723,13 +783,22 @@ def ensure_default_role_and_user(*, conn: Optional[sqlite3.Connection] = None) -
     if not conn:
         conn = get_connection()
     try:
-        # Default role
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO roles(name, description)
-            VALUES ('Admin', 'Full access to all features')
-            """
-        )
+        # Default roles
+        default_roles = [
+            ('Admin', 'Full access to all features'),
+            ('Manager', 'Management access with approval capabilities'),
+            ('Accountant', 'Full accounting operations access'),
+            ('User', 'Standard user with read and limited write access'),
+            ('Viewer', 'Read-only access to view reports and data')
+        ]
+        for role_name, role_description in default_roles:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO roles(name, description)
+                VALUES (?, ?)
+                """,
+                (role_name, role_description)
+            )
         # Default company (already seeded in seed_chart_of_accounts, but safe here too)
         conn.execute(
             """
@@ -745,13 +814,35 @@ def ensure_default_role_and_user(*, conn: Optional[sqlite3.Connection] = None) -
         role_row = cur.fetchone()
         role_id = int(role_row["id"]) if role_row else None
         if company_id and role_id:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO users(username, full_name, role_id, company_id, is_active)
-                VALUES ('admin', 'Administrator', ?, ?, 1)
-                """,
-                (role_id, company_id),
-            )
+            # Import auth module here to avoid circular imports
+            from . import auth
+            # Default password hash for admin user
+            default_password_hash = auth.hash_password("admin")
+            
+            # Check if admin user exists
+            cur = conn.execute("SELECT id, password_hash FROM users WHERE username='admin'")
+            existing = cur.fetchone()
+            
+            if existing:
+                # Admin exists - set password_hash to default if it's empty/invalid
+                admin_id = existing['id']
+                existing_hash = existing.get('password_hash') if hasattr(existing, 'get') else existing['password_hash']
+                
+                # If password hash is empty or None, set it to default "admin" password
+                if not existing_hash or (isinstance(existing_hash, str) and len(existing_hash.strip()) == 0):
+                    conn.execute(
+                        "UPDATE users SET password_hash = ? WHERE id = ?",
+                        (default_password_hash, admin_id)
+                    )
+            else:
+                # Create admin user with default "admin" password
+                conn.execute(
+                    """
+                    INSERT INTO users(username, full_name, role_id, company_id, is_active, password_hash)
+                    VALUES ('admin', 'Administrator', ?, ?, 1, ?)
+                    """,
+                    (role_id, company_id, default_password_hash),
+                )
         conn.commit()
     finally:
         if not owned:
@@ -1919,7 +2010,7 @@ def get_account_by_name(name: str, conn: Optional[sqlite3.Connection] = None) ->
 
 
 def compute_trial_balance(
-    *, from_date: Optional[str] = None, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, exclude_closing: bool = False, conn: Optional[sqlite3.Connection] = None
+    *, from_date: Optional[str] = None, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, exclude_closing: bool = False, exclude_adjusting: bool = False, conn: Optional[sqlite3.Connection] = None
 ) -> list[sqlite3.Row]:
     owned = conn is not None
     if not conn:
@@ -1947,6 +2038,11 @@ def compute_trial_balance(
         if exclude_closing:
             closing_filter = "AND (je.is_closing = 0 OR je.is_closing IS NULL)"
 
+        # Exclude adjusting entries if requested (for unadjusted trial balance)
+        adjusting_filter = ""
+        if exclude_adjusting:
+            adjusting_filter = "AND (je.is_adjusting = 0 OR je.is_adjusting IS NULL)"
+
         # Compute a signed balance then split into non-negative net_debit / net_credit
         # Only include posted entries for accurate balances
         balance_expr = "(COALESCE(SUM(jl.debit),0) - COALESCE(SUM(jl.credit),0))"
@@ -1959,7 +2055,7 @@ def compute_trial_balance(
             LEFT JOIN journal_entries je ON je.id = jl.entry_id
             WHERE a.is_active = 1 
               AND (je.status = 'posted' OR je.status IS NULL OR je.id IS NULL)
-              {temp_filter} {where_extra} {closing_filter}
+              {temp_filter} {where_extra} {closing_filter} {adjusting_filter}
             GROUP BY a.id, a.code, a.name, a.type, a.normal_side
             ORDER BY a.code
         """
@@ -1968,6 +2064,23 @@ def compute_trial_balance(
     finally:
         if not owned:
             conn.close()
+
+
+def compute_unadjusted_trial_balance(
+    *, from_date: Optional[str] = None, up_to_date: Optional[str] = None, include_temporary: bool = True, period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None
+) -> list[sqlite3.Row]:
+    """
+    Compute unadjusted trial balance by excluding adjusting entries.
+    This is a convenience wrapper around compute_trial_balance with exclude_adjusting=True.
+    """
+    return compute_trial_balance(
+        from_date=from_date,
+        up_to_date=up_to_date,
+        include_temporary=include_temporary,
+        period_id=period_id,
+        exclude_adjusting=True,
+        conn=conn
+    )
 
 
 def fetch_journal(period_id: Optional[int] = None, conn: Optional[sqlite3.Connection] = None) -> list[sqlite3.Row]:
@@ -2010,9 +2123,11 @@ def fetch_ledger(period_id: Optional[int] = None, conn: Optional[sqlite3.Connect
             SELECT a.id as account_id, a.code, a.name, a.type, a.normal_side,
                    je.date, je.description, jl.debit, jl.credit
             FROM accounts a
-            LEFT JOIN journal_lines jl ON jl.account_id = a.id
-            LEFT JOIN journal_entries je ON je.id = jl.entry_id
-            WHERE a.is_active = 1 {period_clause}
+            INNER JOIN journal_lines jl ON jl.account_id = a.id
+            INNER JOIN journal_entries je ON je.id = jl.entry_id
+            WHERE a.is_active = 1 
+              AND (je.status = 'posted' OR je.status IS NULL)
+              {period_clause}
             ORDER BY a.code, je.date, je.id, jl.id
             """
         )

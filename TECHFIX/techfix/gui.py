@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
+from tkinter import ttk, messagebox, filedialog, simpledialog, colorchooser
 import tkinter.font as tkfont
 import sqlite3
 from pathlib import Path
@@ -71,11 +71,329 @@ THEMES = {
     },
 }
 
+# Predefined color theme combinations
+COLOR_THEMES = {
+    "Green + White": {
+        "app_bg": "#f0fdf4",
+        "surface_bg": "#ffffff",
+        "accent_color": "#10b981",
+        "accent_hover": "#059669",
+        "accent_disabled": "#86efac",
+        "text_primary": "#064e3b",
+        "text_secondary": "#047857",
+        "subtitle_fg": "#d1fae5",
+        "entry_border": "#a7f3d0",
+        "entry_disabled_bg": "#d1fae5",
+        "table_stripe": "#ecfdf5",
+        "tree_heading_bg": "#d1fae5",
+        "tree_selected_bg": "#a7f3d0",
+        "tab_selected_bg": "#d1fae5",
+        "tab_active_bg": "#ecfdf5",
+    },
+    "Purple + Dark": {
+        "app_bg": "#1e1b2e",
+        "surface_bg": "#2d1b3d",
+        "accent_color": "#a855f7",
+        "accent_hover": "#9333ea",
+        "accent_disabled": "#6b21a8",
+        "text_primary": "#f3e8ff",
+        "text_secondary": "#c084fc",
+        "subtitle_fg": "#d8b4fe",
+        "entry_border": "#581c87",
+        "entry_disabled_bg": "#3b0764",
+        "table_stripe": "#1a0a2e",
+        "tree_heading_bg": "#3b0764",
+        "tree_selected_bg": "#6b21a8",
+        "tab_selected_bg": "#581c87",
+        "tab_active_bg": "#6b21a8",
+    },
+    "Red + Black": {
+        "app_bg": "#1a0a0a",
+        "surface_bg": "#2d1b1b",
+        "accent_color": "#ef4444",
+        "accent_hover": "#dc2626",
+        "accent_disabled": "#991b1b",
+        "text_primary": "#fee2e2",
+        "text_secondary": "#fca5a5",
+        "subtitle_fg": "#fecaca",
+        "entry_border": "#7f1d1d",
+        "entry_disabled_bg": "#450a0a",
+        "table_stripe": "#0f0505",
+        "tree_heading_bg": "#450a0a",
+        "tree_selected_bg": "#991b1b",
+        "tab_selected_bg": "#7f1d1d",
+        "tab_active_bg": "#991b1b",
+    },
+    "Orange + Cream": {
+        "app_bg": "#fff7ed",
+        "surface_bg": "#ffffff",
+        "accent_color": "#f97316",
+        "accent_hover": "#ea580c",
+        "accent_disabled": "#fb923c",
+        "text_primary": "#7c2d12",
+        "text_secondary": "#9a3412",
+        "subtitle_fg": "#fed7aa",
+        "entry_border": "#fdba74",
+        "entry_disabled_bg": "#ffedd5",
+        "table_stripe": "#fff7ed",
+        "tree_heading_bg": "#ffedd5",
+        "tree_selected_bg": "#fed7aa",
+        "tab_selected_bg": "#ffedd5",
+        "tab_active_bg": "#fff7ed",
+    },
+    "Teal + Gray": {
+        "app_bg": "#0f172a",
+        "surface_bg": "#1e293b",
+        "accent_color": "#14b8a6",
+        "accent_hover": "#0d9488",
+        "accent_disabled": "#0f766e",
+        "text_primary": "#ccfbf1",
+        "text_secondary": "#5eead4",
+        "subtitle_fg": "#99f6e4",
+        "entry_border": "#134e4a",
+        "entry_disabled_bg": "#0f766e",
+        "table_stripe": "#0a1628",
+        "tree_heading_bg": "#134e4a",
+        "tree_selected_bg": "#0f766e",
+        "tab_selected_bg": "#134e4a",
+        "tab_active_bg": "#0f766e",
+    },
+    "Pink + White": {
+        "app_bg": "#fdf2f8",
+        "surface_bg": "#ffffff",
+        "accent_color": "#ec4899",
+        "accent_hover": "#db2777",
+        "accent_disabled": "#f9a8d4",
+        "text_primary": "#831843",
+        "text_secondary": "#be185d",
+        "subtitle_fg": "#fbcfe8",
+        "entry_border": "#f9a8d4",
+        "entry_disabled_bg": "#fce7f3",
+        "table_stripe": "#fdf2f8",
+        "tree_heading_bg": "#fce7f3",
+        "tree_selected_bg": "#fbcfe8",
+        "tab_selected_bg": "#fce7f3",
+        "tab_active_bg": "#fdf2f8",
+    },
+    "Amber + Dark": {
+        "app_bg": "#1c1917",
+        "surface_bg": "#292524",
+        "accent_color": "#f59e0b",
+        "accent_hover": "#d97706",
+        "accent_disabled": "#92400e",
+        "text_primary": "#fef3c7",
+        "text_secondary": "#fde68a",
+        "subtitle_fg": "#fcd34d",
+        "entry_border": "#78350f",
+        "entry_disabled_bg": "#451a03",
+        "table_stripe": "#0f0a05",
+        "tree_heading_bg": "#451a03",
+        "tree_selected_bg": "#92400e",
+        "tab_selected_bg": "#78350f",
+        "tab_active_bg": "#92400e",
+    },
+    "Cyan + Dark": {
+        "app_bg": "#0c1419",
+        "surface_bg": "#1a252e",
+        "accent_color": "#06b6d4",
+        "accent_hover": "#0891b2",
+        "accent_disabled": "#155e75",
+        "text_primary": "#cffafe",
+        "text_secondary": "#67e8f9",
+        "subtitle_fg": "#a5f3fc",
+        "entry_border": "#164e63",
+        "entry_disabled_bg": "#0e7490",
+        "table_stripe": "#0a1217",
+        "tree_heading_bg": "#164e63",
+        "tree_selected_bg": "#155e75",
+        "tab_selected_bg": "#164e63",
+        "tab_active_bg": "#155e75",
+    },
+    "Indigo + Light": {
+        "app_bg": "#eef2ff",
+        "surface_bg": "#ffffff",
+        "accent_color": "#6366f1",
+        "accent_hover": "#4f46e5",
+        "accent_disabled": "#c7d2fe",
+        "text_primary": "#1e1b4b",
+        "text_secondary": "#4338ca",
+        "subtitle_fg": "#e0e7ff",
+        "entry_border": "#c7d2fe",
+        "entry_disabled_bg": "#eef2ff",
+        "table_stripe": "#f5f7fb",
+        "tree_heading_bg": "#e0e7ff",
+        "tree_selected_bg": "#c7d2fe",
+        "tab_selected_bg": "#e0e7ff",
+        "tab_active_bg": "#eef2ff",
+    },
+    "Emerald + White": {
+        "app_bg": "#ecfdf5",
+        "surface_bg": "#ffffff",
+        "accent_color": "#10b981",
+        "accent_hover": "#059669",
+        "accent_disabled": "#86efac",
+        "text_primary": "#064e3b",
+        "text_secondary": "#047857",
+        "subtitle_fg": "#d1fae5",
+        "entry_border": "#a7f3d0",
+        "entry_disabled_bg": "#d1fae5",
+        "table_stripe": "#f0fdf4",
+        "tree_heading_bg": "#d1fae5",
+        "tree_selected_bg": "#a7f3d0",
+        "tab_selected_bg": "#d1fae5",
+        "tab_active_bg": "#ecfdf5",
+    },
+    "Rose + Light": {
+        "app_bg": "#fff1f2",
+        "surface_bg": "#ffffff",
+        "accent_color": "#f43f5e",
+        "accent_hover": "#e11d48",
+        "accent_disabled": "#fda4af",
+        "text_primary": "#881337",
+        "text_secondary": "#be123c",
+        "subtitle_fg": "#ffe4e6",
+        "entry_border": "#fda4af",
+        "entry_disabled_bg": "#ffe4e6",
+        "table_stripe": "#fff1f2",
+        "tree_heading_bg": "#ffe4e6",
+        "tree_selected_bg": "#fda4af",
+        "tab_selected_bg": "#ffe4e6",
+        "tab_active_bg": "#fff1f2",
+    },
+    "Violet + Dark": {
+        "app_bg": "#1e1b2e",
+        "surface_bg": "#2d1b3d",
+        "accent_color": "#8b5cf6",
+        "accent_hover": "#7c3aed",
+        "accent_disabled": "#6b21a8",
+        "text_primary": "#f3e8ff",
+        "text_secondary": "#c084fc",
+        "subtitle_fg": "#ddd6fe",
+        "entry_border": "#581c87",
+        "entry_disabled_bg": "#3b0764",
+        "table_stripe": "#1a0a2e",
+        "tree_heading_bg": "#3b0764",
+        "tree_selected_bg": "#6b21a8",
+        "tab_selected_bg": "#581c87",
+        "tab_active_bg": "#6b21a8",
+    },
+    "Sky + Blue": {
+        "app_bg": "#f0f9ff",
+        "surface_bg": "#ffffff",
+        "accent_color": "#0ea5e9",
+        "accent_hover": "#0284c7",
+        "accent_disabled": "#7dd3fc",
+        "text_primary": "#0c4a6e",
+        "text_secondary": "#0369a1",
+        "subtitle_fg": "#bae6fd",
+        "entry_border": "#7dd3fc",
+        "entry_disabled_bg": "#e0f2fe",
+        "table_stripe": "#f0f9ff",
+        "tree_heading_bg": "#e0f2fe",
+        "tree_selected_bg": "#bae6fd",
+        "tab_selected_bg": "#e0f2fe",
+        "tab_active_bg": "#f0f9ff",
+    },
+    "Slate + Gray": {
+        "app_bg": "#0f172a",
+        "surface_bg": "#1e293b",
+        "accent_color": "#64748b",
+        "accent_hover": "#475569",
+        "accent_disabled": "#334155",
+        "text_primary": "#f1f5f9",
+        "text_secondary": "#cbd5e1",
+        "subtitle_fg": "#94a3b8",
+        "entry_border": "#334155",
+        "entry_disabled_bg": "#1e293b",
+        "table_stripe": "#0a0f1a",
+        "tree_heading_bg": "#334155",
+        "tree_selected_bg": "#475569",
+        "tab_selected_bg": "#334155",
+        "tab_active_bg": "#475569",
+    },
+    "Lime + Dark": {
+        "app_bg": "#1a1f0f",
+        "surface_bg": "#2d3417",
+        "accent_color": "#84cc16",
+        "accent_hover": "#65a30d",
+        "accent_disabled": "#365314",
+        "text_primary": "#f7fee7",
+        "text_secondary": "#d9f99d",
+        "subtitle_fg": "#bef264",
+        "entry_border": "#365314",
+        "entry_disabled_bg": "#1a2e05",
+        "table_stripe": "#0f1408",
+        "tree_heading_bg": "#365314",
+        "tree_selected_bg": "#3f6212",
+        "tab_selected_bg": "#365314",
+        "tab_active_bg": "#3f6212",
+    },
+    "Fuchsia + Dark": {
+        "app_bg": "#1a0a1a",
+        "surface_bg": "#2d1b2d",
+        "accent_color": "#d946ef",
+        "accent_hover": "#c026d3",
+        "accent_disabled": "#86198f",
+        "text_primary": "#fdf4ff",
+        "text_secondary": "#f0abfc",
+        "subtitle_fg": "#f5d0fe",
+        "entry_border": "#86198f",
+        "entry_disabled_bg": "#701a75",
+        "table_stripe": "#0f050f",
+        "tree_heading_bg": "#701a75",
+        "tree_selected_bg": "#86198f",
+        "tab_selected_bg": "#701a75",
+        "tab_active_bg": "#86198f",
+    },
+}
+
 # Core typography for the entire app
 FONT_BASE = "{Segoe UI} 10"
 FONT_BOLD = "{Segoe UI Semibold} 11"
 FONT_TAB = "{Segoe UI Semibold} 10"
 FONT_MONO = "{Cascadia Mono} 11"
+
+# Icon system - Unicode/emoji icons for tabs and actions
+ICONS = {
+    "transactions": "🧾",
+    "journal": "📓",
+    "ledger": "📚",
+    "trial_balance": "🧮",
+    "adjustments": "⚙️",
+    "financial_statements": "💰",
+    "closing": "🔒",
+    "post_closing": "📈",
+    "export": "⬇️",
+    "audit": "🧪",
+    "help": "❓",
+    "save": "💾",
+    "delete": "🗑️",
+    "add": "➕",
+    "edit": "✏️",
+    "search": "🔍",
+    "filter": "🔽",
+    "refresh": "🔄",
+    "settings": "⚙️",
+    "close": "✕",
+    "check": "✓",
+    "warning": "⚠️",
+    "info": "ℹ️",
+    "error": "❌",
+    "success": "✅",
+    "loading": "⏳",
+    "chart": "📈",
+    "document": "📄",
+    "calendar": "📅",
+}
+
+# Status indicator colors
+STATUS_COLORS = {
+    "success": "#10b981",
+    "warning": "#f59e0b",
+    "error": "#ef4444",
+    "info": "#3b82f6",
+    "pending": "#6b7280",
+}
 
 
 class TechFixApp(tk.Tk):
@@ -105,13 +423,20 @@ class TechFixApp(tk.Tk):
         x = max(0, (screen_w - width) // 2)
         y = max(0, (screen_h - height) // 2)
         self.geometry(f"{width}x{height}+{x}+{y}")
+        # Load settings first (including theme preference)
+        saved_theme = None
         try:
             self._load_window_settings()
+            # Check if a theme was loaded from settings
+            if hasattr(self, 'theme_name') and self.theme_name in THEMES:
+                saved_theme = self.theme_name
         except Exception:
             pass
 
+        # Apply saved theme if available, otherwise use system theme
         try:
-            self._apply_theme(self._get_system_theme(), initial=True)
+            theme_to_apply = saved_theme if saved_theme else self._get_system_theme()
+            self._apply_theme(theme_to_apply, initial=True)
         except Exception:
             pass
 
@@ -126,7 +451,21 @@ class TechFixApp(tk.Tk):
         db.init_db(reset=False)
         conn = db.get_connection()
         db.seed_chart_of_accounts(conn)
+        # Ensure default user exists for authentication
+        db.ensure_default_role_and_user(conn=conn)
         conn.close()
+
+        # Initialize authentication (but don't show login yet)
+        try:
+            from . import auth
+            self.auth_module = auth
+            self.current_user = None
+            self.session_token = None
+        except Exception as e:
+            logger.warning(f"Authentication not available: {e}")
+            self.auth_module = None
+            self.current_user = None
+            self.session_token = None
 
         self.engine = AccountingEngine()
         self.periods: List = []
@@ -143,8 +482,30 @@ class TechFixApp(tk.Tk):
         self.style = ttk.Style(self)
         # Initialize theme and palette before building UI
         self.theme_name = "Light"
-        self.palette = THEMES[self.theme_name]
+        self.palette = THEMES[self.theme_name].copy()  # Use copy to avoid modifying original
         self._configure_style()
+        
+        # Show login dialog before building UI (window is hidden)
+        if self.auth_module:
+            # Hide the main window - login dialog will use it as parent
+            self.withdraw()
+            try:
+                from . import login_dialog
+                # Pass self as parent so login dialog uses Toplevel instead of new root
+                login_result = login_dialog.show_login_dialog(self.auth_module, self.palette, parent=self)
+                if not login_result:
+                    # Login cancelled
+                    self.destroy()
+                    return
+                # Set user info from login
+                self.current_user = login_result.get("user")
+                self.session_token = login_result.get("session_token")
+            except Exception as e:
+                logger.error(f"Login dialog error: {e}", exc_info=True)
+                self.destroy()
+                return
+            # Show main window after successful login
+            self.deiconify()
         
         self._build_ui()
         
@@ -154,6 +515,10 @@ class TechFixApp(tk.Tk):
         self._load_periods()
         self._update_theme_widgets()
         self._load_all_views()
+        
+        # Initialize undo/redo button states
+        self._update_undo_redo_states()
+        
         try:
             self._load_inference_rules()
         except Exception:
@@ -176,11 +541,12 @@ class TechFixApp(tk.Tk):
 
         if initial:
             self.theme_name = name
-            self.palette = THEMES[name]
+            self.palette = THEMES[name].copy()  # Use copy to avoid modifying original
+            # Load custom colors if available
+            custom_colors = self._load_custom_colors()
+            if custom_colors:
+                self.palette.update(custom_colors)
             self._configure_style()
-            if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
-                self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
-                self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
             self._update_theme_widgets()
             try:
                 self.set_status(f"Theme: {name}")
@@ -201,11 +567,12 @@ class TechFixApp(tk.Tk):
         except Exception:
             # Fallback to immediate apply if animation fails
             self.theme_name = name
-            self.palette = THEMES[name]
+            self.palette = THEMES[name].copy()  # Use copy to avoid modifying original
+            # Load custom colors if available
+            custom_colors = self._load_custom_colors()
+            if custom_colors:
+                self.palette.update(custom_colors)
             self._configure_style()
-            if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
-                self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
-                self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
             self._update_theme_widgets()
             try:
                 self.set_status(f"Theme: {name}")
@@ -370,6 +737,21 @@ class TechFixApp(tk.Tk):
         )
         self.style.map(
             "Techfix.TButton",
+            background=[("active", colors["accent_hover"]), ("disabled", colors["accent_disabled"])],
+            foreground=[("disabled", "#ffffff")],
+        )
+        
+        # Enhanced button style with rounded corners and shadow effect
+        self.style.configure(
+            "Techfix.Enhanced.TButton",
+            background=colors["accent_color"],
+            foreground="#ffffff",
+            padding=(18, 10),
+            borderwidth=0,
+            relief=tk.RAISED,
+        )
+        self.style.map(
+            "Techfix.Enhanced.TButton",
             background=[("active", colors["accent_hover"]), ("disabled", colors["accent_disabled"])],
             foreground=[("disabled", "#ffffff")],
         )
@@ -640,18 +1022,86 @@ class TechFixApp(tk.Tk):
             except Exception:
                 pass
 
+            # Update header frame and labels to match theme
+            try:
+                if hasattr(self, 'header_frame'):
+                    header = self.header_frame
+                    header.configure(bg=colors.get('accent_color', '#2563eb'))
+                    
+                    # Update header left and right frames
+                    if hasattr(self, 'header_left_frame'):
+                        self.header_left_frame.configure(bg=colors.get('accent_color', '#2563eb'))
+                        for widget in self.header_left_frame.winfo_children():
+                            if isinstance(widget, tk.Label):
+                                widget.configure(bg=colors.get('accent_color', '#2563eb'))
+                                if widget.cget('text') == "Integrated accounting workspace":
+                                    widget.configure(fg=colors.get('subtitle_fg', '#dbeafe'))
+                    
+                    if hasattr(self, 'header_right_frame'):
+                        self.header_right_frame.configure(bg=colors.get('accent_color', '#2563eb'))
+                        # Update all frames and buttons in header_right
+                        for widget in self.header_right_frame.winfo_children():
+                            if isinstance(widget, tk.Frame):
+                                widget.configure(bg=colors.get('accent_color', '#2563eb'))
+                                # Update search frame and its children
+                                for child in widget.winfo_children():
+                                    if isinstance(child, tk.Frame):
+                                        child.configure(bg=colors.get('accent_color', '#2563eb'))
+                                    elif isinstance(child, tk.Entry):
+                                        # Update search entry highlight color
+                                        child.configure(highlightcolor=colors.get('accent_hover', colors.get('accent_color', '#2563eb')))
+                                    elif isinstance(child, tk.Button):
+                                        # Update search button colors
+                                        child.configure(fg=colors.get('accent_color', '#2563eb'))
+                            elif isinstance(widget, tk.Button):
+                                # Update button foreground color to match theme
+                                widget.configure(fg=colors.get('accent_color', '#2563eb'))
+                    
+                    # Update header buttons (user menu and notifications)
+                    if hasattr(self, 'user_menu_btn'):
+                        self.user_menu_btn.configure(fg=colors.get('accent_color', '#2563eb'))
+                    if hasattr(self, 'notif_btn'):
+                        self.notif_btn.configure(fg=colors.get('accent_color', '#2563eb'))
+                    
+                    # Update gradient canvas if it exists
+                    for widget in header.winfo_children():
+                        if isinstance(widget, tk.Canvas):
+                            try:
+                                # Recreate gradient with new colors
+                                header.update_idletasks()
+                                w = header.winfo_width() or 1200
+                                h = header.winfo_height() or 60
+                                widget.destroy()
+                                gradient_canvas = self._create_gradient_canvas(
+                                    header, w, h,
+                                    colors.get('accent_color', '#2563eb'),
+                                    colors.get('accent_hover', colors.get('accent_color', '#2563eb')),
+                                    direction='horizontal'
+                                )
+                                gradient_canvas.place(x=0, y=0, relwidth=1, relheight=1)
+                                gradient_canvas.lower()
+                            except Exception:
+                                pass
+                        elif isinstance(widget, tk.Label):
+                            widget.configure(bg=colors.get('accent_color', '#2563eb'))
+                            # Update subtitle foreground color
+                            if widget.cget('text') == "Integrated accounting workspace":
+                                widget.configure(fg=colors.get('subtitle_fg', '#dbeafe'))
+            except Exception:
+                pass
+
             # Update sidebar indicators and button styles to match theme
             try:
                 if hasattr(self, '_nav_buttons'):
                     cur = getattr(self, '_current_nav_index', None)
-                    for idx, (ind, btn) in enumerate(self._nav_buttons):
+                    for ind, btn, nav_idx in self._nav_buttons:
                         try:
-                            ind.configure(bg=(colors.get('accent_color') if cur == idx else colors.get('surface_bg')),
+                            ind.configure(bg=(colors.get('accent_color') if cur == nav_idx else colors.get('surface_bg')),
                                           highlightthickness=0, bd=0, relief=tk.FLAT)
                         except Exception:
                             pass
                         try:
-                            btn.configure(style=('Techfix.Nav.Selected.TButton' if cur == idx else 'Techfix.Nav.TButton'))
+                            btn.configure(style=('Techfix.Nav.Selected.TButton' if cur == nav_idx else 'Techfix.Nav.TButton'))
                         except Exception:
                             pass
             except Exception:
@@ -719,9 +1169,6 @@ class TechFixApp(tk.Tk):
                         self.theme_name = name
                         self.palette = new_palette
                         self._configure_style()
-                        if hasattr(self, 'light_btn') and hasattr(self, 'dark_btn'):
-                            self.light_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Light" else "Techfix.Theme.TButton")
-                            self.dark_btn.configure(style="Techfix.Theme.Selected.TButton" if name == "Dark" else "Techfix.Theme.TButton")
                         self._update_theme_widgets()
                         self.set_status(f"Theme: {name}")
                         self._save_window_settings()
@@ -780,6 +1227,545 @@ class TechFixApp(tk.Tk):
             _poll()
         except Exception:
             pass
+
+    def _open_color_picker(self) -> None:
+        """Open a color picker dialog to customize GUI colors."""
+        try:
+            # Create a dialog window
+            dialog = tk.Toplevel(self)
+            dialog.title("Customize Colors")
+            dialog.transient(self)
+            dialog.grab_set()
+            
+            # Make dialog modal and center it
+            dialog.update_idletasks()
+            width, height = 600, 500
+            x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+            y = (dialog.winfo_screenheight() // 2) - (height // 2)
+            dialog.geometry(f"{width}x{height}+{x}+{y}")
+            dialog.resizable(False, False)
+            
+            # Apply current theme to dialog
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            # Create main frame
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=20)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Title
+            title_label = ttk.Label(
+                main_frame,
+                text="Customize GUI Colors",
+                font=FONT_BOLD,
+                style="Techfix.Brand.TLabel"
+            )
+            title_label.pack(pady=(0, 20))
+            
+            # Description
+            desc_label = ttk.Label(
+                main_frame,
+                text="Choose colors for different GUI elements. Changes apply immediately.",
+                style="TLabel"
+            )
+            desc_label.pack(pady=(0, 20))
+            
+            # Color selection frame with scrollable area
+            canvas = tk.Canvas(main_frame, bg=self.palette.get("surface_bg", "#ffffff"), highlightthickness=0)
+            scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas, style="Techfix.Surface.TFrame")
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            # Color definitions with user-friendly names
+            color_defs = [
+                ("app_bg", "Application Background", "Main window background color"),
+                ("surface_bg", "Surface Background", "Panel and card background color"),
+                ("accent_color", "Accent Color", "Primary buttons and highlights"),
+                ("accent_hover", "Accent Hover", "Button hover state"),
+                ("text_primary", "Primary Text", "Main text color"),
+                ("text_secondary", "Secondary Text", "Secondary text color"),
+                ("entry_border", "Input Border", "Input field border color"),
+                ("table_stripe", "Table Stripe", "Alternating table row color"),
+                ("tree_heading_bg", "Tree Heading", "Table header background"),
+                ("tree_selected_bg", "Selected Item", "Selected item background"),
+            ]
+            
+            # Store color variables
+            color_vars = {}
+            color_buttons = {}
+            
+            # Create color picker rows
+            for i, (key, label, desc) in enumerate(color_defs):
+                row_frame = ttk.Frame(scrollable_frame, style="Techfix.Surface.TFrame")
+                row_frame.pack(fill=tk.X, pady=8, padx=10)
+                
+                # Label and description
+                label_frame = ttk.Frame(row_frame, style="Techfix.Surface.TFrame")
+                label_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+                
+                ttk.Label(
+                    label_frame,
+                    text=label,
+                    font=FONT_BASE,
+                    style="TLabel"
+                ).pack(anchor=tk.W)
+                
+                ttk.Label(
+                    label_frame,
+                    text=desc,
+                    font="{Segoe UI} 9",
+                    foreground=self.palette.get("text_secondary", "#666666"),
+                    style="TLabel"
+                ).pack(anchor=tk.W)
+                
+                # Color button
+                current_color = self.palette.get(key, "#000000")
+                color_vars[key] = tk.StringVar(value=current_color)
+                
+                def make_color_button(k=key, v=color_vars[key]):
+                    btn = tk.Button(
+                        row_frame,
+                        text="Choose Color",
+                        bg=v.get(),
+                        fg="#ffffff" if self._is_dark_color(v.get()) else "#000000",
+                        command=lambda k=k, v=v: self._pick_color(k, v, btn),
+                        relief=tk.RAISED,
+                        bd=2,
+                        padx=15,
+                        pady=5,
+                        font=FONT_BASE
+                    )
+                    btn.pack(side=tk.RIGHT)
+                    color_buttons[k] = btn
+                    return btn
+                
+                make_color_button()
+            
+            # Pack canvas and scrollbar
+            canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Button frame
+            button_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            button_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            # Reset to default button
+            def reset_to_default():
+                try:
+                    # Reset to current theme's default colors
+                    base_theme = self.theme_name
+                    if base_theme in THEMES:
+                        self.palette = THEMES[base_theme].copy()
+                        # Clear custom colors from settings
+                        self._save_custom_colors(None)
+                        self._apply_theme(base_theme, initial=True)
+                        dialog.destroy()
+                        messagebox.showinfo("Colors Reset", f"Colors reset to {base_theme} theme defaults.")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to reset colors: {e}")
+            
+            ttk.Button(
+                button_frame,
+                text="Reset to Default",
+                command=reset_to_default,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 10))
+            
+            # Apply button
+            def apply_colors():
+                try:
+                    # Update palette with selected colors
+                    for key, var in color_vars.items():
+                        self.palette[key] = var.get()
+                    
+                    # Save custom colors
+                    custom_colors = {key: var.get() for key, var in color_vars.items()}
+                    self._save_custom_colors(custom_colors)
+                    
+                    # Apply the updated theme
+                    self._configure_style()
+                    self._update_theme_widgets()
+                    
+                    dialog.destroy()
+                    messagebox.showinfo("Colors Applied", "Custom colors have been applied!")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to apply colors: {e}")
+            
+            ttk.Button(
+                button_frame,
+                text="Apply Colors",
+                command=apply_colors,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 10))
+            
+            # Cancel button
+            ttk.Button(
+                button_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+            # Update canvas scroll region
+            def update_scroll_region():
+                canvas.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            
+            scrollable_frame.after(100, update_scroll_region)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open color picker: {e}")
+    
+    def _pick_color(self, key: str, var: tk.StringVar, button: tk.Button) -> None:
+        """Open color chooser for a specific color key."""
+        try:
+            color = colorchooser.askcolor(
+                title=f"Choose Color for {key}",
+                color=var.get(),
+                parent=self
+            )
+            if color[1]:  # User selected a color
+                var.set(color[1])
+                button.configure(bg=color[1])
+                button.configure(fg="#ffffff" if self._is_dark_color(color[1]) else "#000000")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to pick color: {e}")
+    
+    def _is_dark_color(self, hex_color: str) -> bool:
+        """Check if a hex color is dark (for text contrast)."""
+        try:
+            h = hex_color.lstrip('#')
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            # Calculate relative luminance
+            lum = (0.2126 * (r/255.0) + 0.7152 * (g/255.0) + 0.0722 * (b/255.0))
+            return lum < 0.5
+        except Exception:
+            return False
+    
+    def _save_custom_colors(self, custom_colors: Optional[Dict[str, str]]) -> None:
+        """Save custom colors to settings file."""
+        try:
+            settings_path = db.DB_DIR / "settings.json"
+            if settings_path.exists():
+                data = json.loads(settings_path.read_text(encoding="utf-8"))
+            else:
+                data = {}
+            
+            if custom_colors:
+                data["custom_colors"] = custom_colors
+                data["custom_colors_theme"] = self.theme_name  # Remember which theme was customized
+            else:
+                data.pop("custom_colors", None)
+                data.pop("custom_colors_theme", None)
+            
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Failed to save custom colors: {e}")
+    
+    def _load_custom_colors(self) -> Optional[Dict[str, str]]:
+        """Load custom colors from settings file."""
+        try:
+            # Ensure theme_name is set
+            if not hasattr(self, 'theme_name') or not self.theme_name:
+                return None
+                
+            settings_path = db.DB_DIR / "settings.json"
+            if settings_path.exists():
+                data = json.loads(settings_path.read_text(encoding="utf-8"))
+                custom_colors = data.get("custom_colors")
+                custom_theme = data.get("custom_colors_theme")
+                # Only apply custom colors if they match the current theme
+                if custom_colors and custom_theme == self.theme_name:
+                    return custom_colors
+            return None
+        except Exception as e:
+            logger.error(f"Failed to load custom colors: {e}")
+            return None
+
+    def _open_color_theme_picker(self) -> None:
+        """Open a color theme picker dialog with predefined color combinations."""
+        try:
+            # Create a dialog window
+            dialog = tk.Toplevel(self)
+            dialog.title("Choose Color Theme")
+            dialog.transient(self)
+            dialog.grab_set()
+            
+            # Make dialog modal and center it
+            dialog.update_idletasks()
+            width, height = 700, 650
+            x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+            y = (dialog.winfo_screenheight() // 2) - (height // 2)
+            dialog.geometry(f"{width}x{height}+{x}+{y}")
+            dialog.resizable(True, True)  # Allow resizing so buttons are always accessible
+            
+            # Apply current theme to dialog
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            # Create main frame
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=20)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Title
+            title_label = ttk.Label(
+                main_frame,
+                text="Choose a Color Theme",
+                font=FONT_BOLD,
+                style="Techfix.Brand.TLabel"
+            )
+            title_label.pack(pady=(0, 10))
+            
+            # Description
+            desc_label = ttk.Label(
+                main_frame,
+                text="Select a color combination to apply to your GUI",
+                style="TLabel"
+            )
+            desc_label.pack(pady=(0, 20))
+            
+            # Create a container for the scrollable area and buttons
+            content_container = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            content_container.pack(fill=tk.BOTH, expand=True)
+            
+            # Create scrollable frame for color theme cards
+            canvas = tk.Canvas(content_container, bg=self.palette.get("surface_bg", "#ffffff"), highlightthickness=0)
+            scrollbar = ttk.Scrollbar(content_container, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas, style="Techfix.Surface.TFrame")
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            # Create color theme cards
+            selected_theme = [None]  # Use list to allow modification in nested function
+            
+            def create_theme_card(theme_name: str, theme_colors: Dict[str, str], parent_frame: tk.Widget):
+                """Create a visual card for a color theme."""
+                card_frame = tk.Frame(
+                    parent_frame,
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    relief=tk.RAISED,
+                    bd=2,
+                    cursor="hand2"
+                )
+                card_frame.pack(fill=tk.X, pady=8, padx=10)
+                
+                # Card header with theme name
+                header = tk.Frame(card_frame, bg=theme_colors["accent_color"], height=40)
+                header.pack(fill=tk.X)
+                tk.Label(
+                    header,
+                    text=theme_name,
+                    bg=theme_colors["accent_color"],
+                    fg="#ffffff",
+                    font=FONT_BOLD
+                ).pack(pady=10)
+                
+                # Color preview area
+                preview_frame = tk.Frame(card_frame, bg=theme_colors["app_bg"])
+                preview_frame.pack(fill=tk.X, padx=2, pady=2)
+                
+                # Show color swatches in a grid
+                swatch_frame = tk.Frame(preview_frame, bg=theme_colors["app_bg"])
+                swatch_frame.pack(fill=tk.X, padx=10, pady=10)
+                
+                # Main colors to display
+                colors_to_show = [
+                    ("Background", theme_colors["app_bg"]),
+                    ("Surface", theme_colors["surface_bg"]),
+                    ("Accent", theme_colors["accent_color"]),
+                    ("Text", theme_colors["text_primary"]),
+                ]
+                
+                # Create a grid of color swatches
+                for i, (label, color) in enumerate(colors_to_show):
+                    row = i // 2
+                    col = i % 2
+                    
+                    # Container for each swatch
+                    swatch_container = tk.Frame(swatch_frame, bg=theme_colors["app_bg"])
+                    swatch_container.grid(row=row, column=col, padx=5, pady=5, sticky="w")
+                    
+                    # Color swatch
+                    swatch = tk.Frame(swatch_container, bg=color, width=50, height=25, relief=tk.SUNKEN, bd=1)
+                    swatch.pack(side=tk.LEFT, padx=(0, 5))
+                    
+                    # Label
+                    tk.Label(
+                        swatch_container,
+                        text=label,
+                        bg=theme_colors["app_bg"],
+                        fg=theme_colors["text_secondary"],
+                        font="{Segoe UI} 8"
+                    ).pack(side=tk.LEFT)
+                
+                # Selection indicator - store reference for easy access
+                indicator = tk.Frame(card_frame, bg=self.palette.get("accent_color", "#2563eb"), height=3)
+                indicator.pack_forget()  # Hide by default
+                # Store indicator reference in card_frame for easy access
+                card_frame._indicator = indicator
+                card_frame._theme_name = theme_name
+                
+                def on_click(event=None):
+                    # Hide all indicators by finding them through stored references
+                    for widget in parent_frame.winfo_children():
+                        if hasattr(widget, '_indicator'):
+                            try:
+                                widget._indicator.pack_forget()
+                            except:
+                                pass
+                    
+                    # Show this indicator at the bottom of the card
+                    try:
+                        indicator.pack(fill=tk.X, side=tk.BOTTOM)
+                    except:
+                        pass
+                    selected_theme[0] = theme_name
+                    return "break"
+                
+                # Bind click to all interactive parts
+                # Bind to main card frame (this will catch clicks on empty areas)
+                card_frame.bind("<Button-1>", on_click)
+                card_frame.configure(cursor="hand2")
+                
+                # Bind to header
+                header.bind("<Button-1>", on_click)
+                header.configure(cursor="hand2")
+                
+                # Bind to preview frame
+                preview_frame.bind("<Button-1>", on_click)
+                preview_frame.configure(cursor="hand2")
+                
+                # Bind to swatch frame
+                swatch_frame.bind("<Button-1>", on_click)
+                swatch_frame.configure(cursor="hand2")
+                
+                # Bind to all child widgets in swatch_frame recursively
+                def bind_to_children(parent):
+                    for child in parent.winfo_children():
+                        child.bind("<Button-1>", on_click)
+                        if isinstance(child, tk.Frame):
+                            bind_to_children(child)
+                
+                bind_to_children(swatch_frame)
+                
+                return card_frame
+            
+            # Create cards for Light and Dark themes first (from THEMES)
+            for theme_name in ["Light", "Dark"]:
+                if theme_name in THEMES:
+                    display_name = f"{theme_name} Theme"
+                    create_theme_card(display_name, THEMES[theme_name], scrollable_frame)
+            
+            # Create cards for each color theme
+            for theme_name, theme_colors in COLOR_THEMES.items():
+                create_theme_card(theme_name, theme_colors, scrollable_frame)
+            
+            # Pack canvas and scrollbar in the content container
+            canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Button frame - pack at bottom of main_frame, not inside content_container
+            button_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            button_frame.pack(fill=tk.X, pady=(15, 5), side=tk.BOTTOM)
+            
+            # Reset to default button
+            def reset_to_default():
+                try:
+                    # Reset to current theme's default colors
+                    base_theme = self.theme_name
+                    if base_theme in THEMES:
+                        self.palette = THEMES[base_theme].copy()
+                        # Clear custom colors from settings
+                        self._save_custom_colors(None)
+                        self._apply_theme(base_theme, initial=True)
+                        dialog.destroy()
+                        messagebox.showinfo("Theme Reset", f"Colors reset to {base_theme} theme defaults.")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to reset colors: {e}")
+            
+            ttk.Button(
+                button_frame,
+                text="Reset to Default",
+                command=reset_to_default,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 10))
+            
+            # Apply button
+            def apply_theme():
+                try:
+                    if not selected_theme[0]:
+                        messagebox.showwarning("No Selection", "Please select a color theme first.")
+                        return
+                    
+                    theme_name = selected_theme[0]
+                    
+                    # If Light Theme or Dark Theme is selected, update theme_name
+                    if theme_name == "Light Theme":
+                        self.theme_name = "Light"
+                        # Clear custom colors to use default Light theme
+                        self._save_custom_colors(None)
+                        self._apply_theme("Light", initial=True)
+                    elif theme_name == "Dark Theme":
+                        self.theme_name = "Dark"
+                        # Clear custom colors to use default Dark theme
+                        self._save_custom_colors(None)
+                        self._apply_theme("Dark", initial=True)
+                    else:
+                        # For other color themes, apply custom colors
+                        if theme_name in COLOR_THEMES:
+                            theme_colors = COLOR_THEMES[theme_name]
+                            self.palette = theme_colors.copy()
+                            # Save as custom colors
+                            self._save_custom_colors(theme_colors)
+                            # Apply the updated theme
+                            self._configure_style()
+                            self._update_theme_widgets()
+                        else:
+                            messagebox.showerror("Error", f"Theme '{theme_name}' not found.")
+                            return
+                    
+                    dialog.destroy()
+                    messagebox.showinfo("Theme Applied", f"{theme_name} has been applied!")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to apply theme: {e}")
+            
+            ttk.Button(
+                button_frame,
+                text="Apply Theme",
+                command=apply_theme,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 10))
+            
+            # Cancel button
+            ttk.Button(
+                button_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+            # Update canvas scroll region
+            def update_scroll_region():
+                canvas.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            
+            scrollable_frame.after(100, update_scroll_region)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open color theme picker: {e}")
+
     def _animate_view_transition(self, target: tk.Widget, *, duration_ms: int = 250) -> None:
         try:
             target.update_idletasks()
@@ -943,6 +1929,3514 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
 
+    # ========== AESTHETIC ENHANCEMENTS ==========
+    
+    def _create_gradient_canvas(self, parent, width, height, color1, color2, direction='horizontal'):
+        """Create a canvas with gradient background."""
+        try:
+            canvas = tk.Canvas(parent, width=width, height=height, highlightthickness=0, bd=0)
+            def hex_to_rgb(h):
+                h = h.lstrip('#')
+                return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+            def rgb_to_hex(r, g, b):
+                return f"#{r:02x}{g:02x}{b:02x}"
+            r1, g1, b1 = hex_to_rgb(color1)
+            r2, g2, b2 = hex_to_rgb(color2)
+            if direction == 'horizontal':
+                for i in range(width):
+                    t = i / float(width)
+                    r = int(r1 + (r2 - r1) * t)
+                    g = int(g1 + (g2 - g1) * t)
+                    b = int(b1 + (b2 - b1) * t)
+                    c = rgb_to_hex(r, g, b)
+                    canvas.create_line(i, 0, i, height, fill=c, width=1)
+            else:
+                for i in range(height):
+                    t = i / float(height)
+                    r = int(r1 + (r2 - r1) * t)
+                    g = int(g1 + (g2 - g1) * t)
+                    b = int(b1 + (b2 - b1) * t)
+                    c = rgb_to_hex(r, g, b)
+                    canvas.create_line(0, i, width, i, fill=c, width=1)
+            return canvas
+        except Exception:
+            return tk.Canvas(parent, width=width, height=height, highlightthickness=0, bd=0, bg=color1)
+
+    def _create_glassmorphism_overlay(self, parent, alpha=0.85):
+        """Create a glassmorphism effect overlay."""
+        try:
+            colors = self.palette
+            overlay = tk.Frame(parent, bg=colors.get('surface_bg', '#ffffff'))
+            # Simulate glassmorphism with semi-transparent background
+            # Note: Tkinter doesn't support true transparency, so we use a lightened color
+            def lighten_color(hex_color, factor=0.15):
+                h = hex_color.lstrip('#')
+                r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                r = min(255, int(r + (255 - r) * factor))
+                g = min(255, int(g + (255 - g) * factor))
+                b = min(255, int(b + (255 - b) * factor))
+                return f"#{r:02x}{g:02x}{b:02x}"
+            glass_color = lighten_color(colors.get('surface_bg', '#ffffff'), factor=alpha)
+            overlay.configure(bg=glass_color)
+            return overlay
+        except Exception:
+            return tk.Frame(parent, bg=self.palette.get('surface_bg', '#ffffff'))
+
+    def _add_hover_animation(self, widget, scale_factor=1.05, glow_color=None):
+        """Add hover scale and glow animation to a widget."""
+        try:
+            if glow_color is None:
+                glow_color = self.palette.get('accent_color', '#2563eb')
+            
+            original_bg = widget.cget('bg') if hasattr(widget, 'cget') else None
+            original_relief = widget.cget('relief') if hasattr(widget, 'cget') else None
+            
+            def on_enter(e):
+                try:
+                    # Scale effect (simulated with padding/border)
+                    widget.configure(relief=tk.RAISED, bd=2)
+                    # Glow effect (simulated with highlight)
+                    widget.configure(highlightbackground=glow_color, highlightthickness=2)
+                except Exception:
+                    pass
+            
+            def on_leave(e):
+                try:
+                    if original_relief:
+                        widget.configure(relief=original_relief, bd=1)
+                    else:
+                        widget.configure(relief=tk.FLAT, bd=0)
+                    widget.configure(highlightthickness=0)
+                except Exception:
+                    pass
+            
+            widget.bind('<Enter>', on_enter)
+            widget.bind('<Leave>', on_leave)
+        except Exception:
+            pass
+
+    def _create_loading_spinner(self, parent, size=40):
+        """Create an animated loading spinner."""
+        try:
+            canvas = tk.Canvas(parent, width=size, height=size, highlightthickness=0, bd=0, bg=self.palette.get('surface_bg', '#ffffff'))
+            colors = self.palette
+            accent = colors.get('accent_color', '#2563eb')
+            center = size // 2
+            radius = size // 3
+            
+            spinner_id = None
+            angle = 0
+            
+            def animate():
+                nonlocal angle, spinner_id
+                canvas.delete('spinner')
+                angle += 15
+                for i in range(8):
+                    a = (angle + i * 45) % 360
+                    x = center + radius * 0.7 * (1 if i % 2 == 0 else 0.5) * (1 if a < 180 else -1)
+                    y = center + radius * 0.7 * (1 if i % 2 == 0 else 0.5) * (1 if 90 < a < 270 else -1)
+                    alpha = 1.0 - (i * 0.1)
+                    color = accent
+                    canvas.create_oval(x-3, y-3, x+3, y+3, fill=color, outline='', tags='spinner')
+                canvas.after(50, animate)
+            
+            animate()
+            return canvas
+        except Exception:
+            return tk.Label(parent, text="⏳", font=("Segoe UI", 16))
+
+    def _create_progress_bar(self, parent, width=200, height=20):
+        """Create an animated progress bar."""
+        try:
+            frame = tk.Frame(parent, bg=self.palette.get('surface_bg', '#ffffff'))
+            canvas = tk.Canvas(frame, width=width, height=height, highlightthickness=0, bd=0, bg=self.palette.get('entry_border', '#d8dee9'))
+            canvas.pack()
+            
+            colors = self.palette
+            accent = colors.get('accent_color', '#2563eb')
+            
+            progress = 0
+            def animate():
+                nonlocal progress
+                canvas.delete('progress')
+                progress = (progress + 2) % 100
+                w = int((width - 4) * progress / 100)
+                canvas.create_rectangle(2, 2, w + 2, height - 2, fill=accent, outline='', tags='progress')
+                canvas.after(30, animate)
+            
+            animate()
+            return frame
+        except Exception:
+            return tk.Label(parent, text="Loading...", font=FONT_BASE)
+
+    def _create_status_badge(self, parent, text, status="info", pulse=False):
+        """Create an animated status badge with optional pulse effect."""
+        try:
+            colors = self.palette
+            status_color = STATUS_COLORS.get(status, STATUS_COLORS["info"])
+            bg_color = colors.get('surface_bg', '#ffffff')
+            
+            frame = tk.Frame(parent, bg=bg_color)
+            badge = tk.Label(
+                frame,
+                text=f"{ICONS.get(status, '●')} {text}",
+                bg=status_color,
+                fg="#ffffff",
+                font=("{Segoe UI} 9 bold"),
+                padx=8,
+                pady=4,
+                relief=tk.RAISED,
+                bd=1
+            )
+            badge.pack()
+            
+            if pulse:
+                pulse_alpha = 1.0
+                def pulse_animate():
+                    nonlocal pulse_alpha
+                    pulse_alpha = (pulse_alpha + 0.1) % 1.0
+                    try:
+                        def hex_to_rgb(h):
+                            h = h.lstrip('#')
+                            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+                        def rgb_to_hex(r, g, b):
+                            return f"#{r:02x}{g:02x}{b:02x}"
+                        r, g, b = hex_to_rgb(status_color)
+                        alpha = 0.7 + 0.3 * abs(pulse_alpha - 0.5) * 2
+                        r = int(r * alpha)
+                        g = int(g * alpha)
+                        b = int(b * alpha)
+                        pulse_color = rgb_to_hex(min(255, r), min(255, g), min(255, b))
+                        badge.configure(bg=pulse_color)
+                    except Exception:
+                        pass
+                    frame.after(100, pulse_animate)
+                pulse_animate()
+            
+            return frame
+        except Exception:
+            return tk.Label(parent, text=text, font=FONT_BASE)
+
+    def _create_mini_chart(self, parent, data, width=150, height=60, title=None):
+        """Create a mini sparkline chart with optional title."""
+        try:
+            container = tk.Frame(parent, bg=self.palette.get('surface_bg', '#ffffff'))
+            
+            if title:
+                title_label = tk.Label(
+                    container,
+                    text=title,
+                    bg=self.palette.get('surface_bg', '#ffffff'),
+                    fg=self.palette.get('text_secondary', '#4b5563'),
+                    font=("{Segoe UI} 8"),
+                    anchor=tk.W
+                )
+                title_label.pack(anchor=tk.W, padx=2, pady=(0, 2))
+            
+            canvas = tk.Canvas(container, width=width, height=height, highlightthickness=0, bd=0, bg=self.palette.get('surface_bg', '#ffffff'))
+            canvas.pack()
+            
+            if not data or len(data) < 2:
+                # Show placeholder
+                canvas.create_text(width//2, height//2, text="No data", fill=self.palette.get('text_secondary', '#4b5563'), font=("{Segoe UI} 9"))
+                return container
+            
+            colors = self.palette
+            accent = colors.get('accent_color', '#2563eb')
+            
+            min_val = min(data)
+            max_val = max(data)
+            range_val = max_val - min_val if max_val != min_val else 1
+            
+            points = []
+            for i, val in enumerate(data):
+                x = int((i / (len(data) - 1)) * (width - 20) + 10)
+                y = int(height - 10 - ((val - min_val) / range_val) * (height - 20))
+                points.append((x, y))
+            
+            # Draw grid lines
+            for i in range(3):
+                y_pos = 10 + (height - 20) * i / 2
+                canvas.create_line(10, y_pos, width - 10, y_pos, fill=colors.get('entry_border', '#d8dee9'), width=1, dash=(2, 2))
+            
+            # Draw line
+            if len(points) > 1:
+                for i in range(len(points) - 1):
+                    canvas.create_line(points[i][0], points[i][1], points[i+1][0], points[i+1][1], fill=accent, width=2, smooth=True)
+            
+            # Draw points
+            for x, y in points:
+                canvas.create_oval(x-3, y-3, x+3, y+3, fill=accent, outline='', width=1)
+            
+            # Add min/max labels
+            canvas.create_text(5, 10, text=f"{max_val:.0f}", fill=colors.get('text_secondary', '#4b5563'), font=("{Segoe UI} 7"), anchor=tk.W)
+            canvas.create_text(5, height - 10, text=f"{min_val:.0f}", fill=colors.get('text_secondary', '#4b5563'), font=("{Segoe UI} 7"), anchor=tk.W)
+            
+            return container
+        except Exception:
+            return tk.Label(parent, text="📊", font=("Segoe UI", 20))
+
+    def _enhance_button_style(self, button, rounded=True, shadow=True):
+        """Enhance button with rounded corners and shadow effect."""
+        try:
+            if rounded:
+                # Simulate rounded corners with relief
+                button.configure(relief=tk.RAISED, bd=2)
+            if shadow:
+                # Simulate shadow with highlight
+                button.configure(highlightbackground=self.palette.get('entry_border', '#d8dee9'), highlightthickness=1)
+            # Add hover effect
+            self._add_hover_animation(button)
+        except Exception:
+            pass
+
+    def _enhance_typography(self, widget, text_shadow=False, letter_spacing=None):
+        """Enhance typography with text shadow and letter spacing."""
+        try:
+            # Tkinter has limited typography support, but we can simulate effects
+            if text_shadow:
+                # Create a shadow effect by layering labels
+                pass  # Would require creating multiple label layers
+            if letter_spacing:
+                # Letter spacing would require custom font or character-by-character rendering
+                pass  # Limited support in Tkinter
+        except Exception:
+            pass
+
+    def _animate_tab_fade(self, target_frame, fade_in=True, duration_ms=300):
+        """Enhanced tab transition with fade effect."""
+        try:
+            # This is a subtle fade effect that works with the swipe animation
+            # The actual fade is handled by the swipe animation's overlay
+            # This method can be extended for more complex fade effects if needed
+            pass
+        except Exception:
+            pass
+
+    def _setup_keyboard_shortcuts(self) -> None:
+        """Setup keyboard shortcuts."""
+        try:
+            # Common shortcuts
+            self.bind('<Control-n>', lambda e: self._nav_to(0))  # New transaction
+            self.bind('<Control-s>', lambda e: self._save_current())  # Save
+            self.bind('<Control-f>', lambda e: self._show_search_dialog())  # Search
+            self.bind('<Control-i>', lambda e: self._show_import_dialog())  # Import
+            self.bind('<Control-d>', lambda e: self._show_dashboard())  # Dashboard
+            self.bind('<Control-z>', lambda e: self._undo_action())  # Undo
+            self.bind('<Control-y>', lambda e: self._redo_action())  # Redo
+            self.bind('<Control-q>', lambda e: self._on_close())  # Quit
+            self.bind('<F1>', lambda e: self._show_context_help())  # Help
+        except Exception:
+            pass
+    
+    def _update_undo_redo_states(self) -> None:
+        """Update undo/redo button states."""
+        try:
+            from . import undo
+            # Update menu if it exists
+            if hasattr(self, 'edit_menu'):
+                self.edit_menu.entryconfig("Undo", state=tk.NORMAL if undo.can_undo() else tk.DISABLED)
+                self.edit_menu.entryconfig("Redo", state=tk.NORMAL if undo.can_redo() else tk.DISABLED)
+            # Update toolbar buttons if they exist
+            if hasattr(self, 'undo_btn'):
+                self.undo_btn.configure(state=tk.NORMAL if undo.can_undo() else tk.DISABLED)
+            if hasattr(self, 'redo_btn'):
+                self.redo_btn.configure(state=tk.NORMAL if undo.can_redo() else tk.DISABLED)
+        except Exception:
+            pass
+    
+    def _undo_action(self) -> None:
+        """Undo last action."""
+        try:
+            from . import undo
+            result = undo.undo()
+            if result:
+                self.set_status(f"Undone: {result.get('message', 'Action undone')}", "success")
+                self._load_all_views()
+                self._update_undo_redo_states()
+            else:
+                self.set_status("Nothing to undo", "info")
+        except Exception as e:
+            messagebox.showerror("Error", f"Undo failed: {e}")
+    
+    def _redo_action(self) -> None:
+        """Redo last undone action."""
+        try:
+            from . import undo
+            result = undo.redo()
+            if result:
+                self.set_status(f"Redone: {result.get('message', 'Action redone')}", "success")
+                self._load_all_views()
+                self._update_undo_redo_states()
+            else:
+                self.set_status("Nothing to redo", "info")
+        except Exception as e:
+            messagebox.showerror("Error", f"Redo failed: {e}")
+    
+    def _show_search_dialog(self) -> None:
+        """Show enhanced search dialog."""
+        try:
+            from . import search
+            
+            dialog = tk.Toplevel(self)
+            dialog.title("Search - TechFix")
+            dialog.transient(self)
+            dialog.grab_set()
+            dialog.geometry("900x700")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            # Center dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (900 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (700 // 2)
+            dialog.geometry(f"900x700+{x}+{y}")
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Enhanced header
+            header_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            header_frame.pack(fill=tk.X, pady=(0, 20))
+            
+            ttk.Label(
+                header_frame,
+                text="🔍 Search",
+                font=("{Segoe UI Semibold} 22"),
+                style="TLabel"
+            ).pack(side=tk.LEFT)
+            
+            # Search box with enhanced styling
+            search_container = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            search_container.pack(fill=tk.X, pady=(0, 20))
+            
+            search_box_frame = tk.Frame(
+                search_container,
+                bg=self.palette.get("app_bg", "#f9fafb"),
+                relief=tk.FLAT,
+                bd=1,
+                highlightbackground=self.palette.get("entry_border", "#e5e7eb"),
+                highlightthickness=1
+            )
+            search_box_frame.pack(fill=tk.X, padx=2, pady=2)
+            
+            search_inner = tk.Frame(search_box_frame, bg=self.palette.get("app_bg", "#f9fafb"))
+            search_inner.pack(fill=tk.X, padx=16, pady=12)
+            
+            search_icon = tk.Label(
+                search_inner,
+                text="🔍",
+                font=("{Segoe UI} 16"),
+                bg=self.palette.get("app_bg", "#f9fafb"),
+                fg=self.palette.get("text_secondary", "#6b7280")
+            )
+            search_icon.pack(side=tk.LEFT, padx=(0, 12))
+            
+            search_var = tk.StringVar()
+            search_entry = tk.Entry(
+                search_inner,
+                textvariable=search_var,
+                font=("{Segoe UI} 12"),
+                bg=self.palette.get("app_bg", "#f9fafb"),
+                fg=self.palette.get("text_primary", "#111827"),
+                relief=tk.FLAT,
+                bd=0,
+                highlightthickness=0
+            )
+            search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            search_entry.insert(0, "Search transactions, accounts, customers, vendors...")
+            search_entry.configure(fg=self.palette.get("text_secondary", "#9ca3af"))
+            search_entry.focus()
+            
+            def on_search_focus_in(e):
+                if search_entry.get() == "Search transactions, accounts, customers, vendors...":
+                    search_entry.delete(0, tk.END)
+                    search_entry.configure(fg=self.palette.get("text_primary", "#111827"))
+            
+            def on_search_focus_out(e):
+                if not search_entry.get().strip():
+                    search_entry.insert(0, "Search transactions, accounts, customers, vendors...")
+                    search_entry.configure(fg=self.palette.get("text_secondary", "#9ca3af"))
+            
+            search_entry.bind('<FocusIn>', on_search_focus_in)
+            search_entry.bind('<FocusOut>', on_search_focus_out)
+            
+            # Results container with scrollable area
+            results_container = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            results_container.pack(fill=tk.BOTH, expand=True)
+            
+            # Canvas for scrollable results
+            canvas = tk.Canvas(
+                results_container,
+                bg=self.palette.get("surface_bg", "#ffffff"),
+                highlightthickness=0,
+                bd=0
+            )
+            scrollbar = ttk.Scrollbar(results_container, orient="vertical", command=canvas.yview)
+            results_frame = tk.Frame(canvas, bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            results_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=results_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Mouse wheel scrolling - bind to canvas and dialog, not globally
+            def on_mousewheel(event):
+                try:
+                    if canvas.winfo_exists():
+                        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                except tk.TclError:
+                    pass  # Widget was destroyed
+            
+            canvas.bind("<MouseWheel>", on_mousewheel)
+            dialog.bind("<MouseWheel>", on_mousewheel)
+            
+            # Cleanup binding when dialog is destroyed
+            def cleanup_bindings():
+                try:
+                    canvas.unbind("<MouseWheel>")
+                    dialog.unbind("<MouseWheel>")
+                except:
+                    pass
+            dialog.bind("<Destroy>", lambda e: cleanup_bindings())
+            
+            def create_result_card(parent, icon, title, subtitle, data_type, item_id, on_click=None):
+                """Create a clickable result card."""
+                card_frame = tk.Frame(
+                    parent,
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    relief=tk.FLAT,
+                    bd=1,
+                    highlightbackground=self.palette.get("entry_border", "#e5e7eb"),
+                    highlightthickness=1,
+                    cursor="hand2"
+                )
+                card_frame.pack(fill=tk.X, pady=4, padx=4)
+                
+                content_frame = tk.Frame(card_frame, bg=self.palette.get("app_bg", "#f9fafb"))
+                content_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=12)
+                
+                # Icon and text
+                icon_label = tk.Label(
+                    content_frame,
+                    text=icon,
+                    font=("{Segoe UI} 20"),
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    fg=self.palette.get("accent_color", "#2563eb")
+                )
+                icon_label.pack(side=tk.LEFT, padx=(0, 12))
+                
+                text_frame = tk.Frame(content_frame, bg=self.palette.get("app_bg", "#f9fafb"))
+                text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                
+                title_label = tk.Label(
+                    text_frame,
+                    text=title,
+                    font=("{Segoe UI Semibold} 13"),
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    fg=self.palette.get("text_primary", "#111827"),
+                    anchor=tk.W
+                )
+                title_label.pack(anchor=tk.W)
+                
+                subtitle_label = tk.Label(
+                    text_frame,
+                    text=subtitle,
+                    font=("{Segoe UI} 11"),
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    fg=self.palette.get("text_secondary", "#6b7280"),
+                    anchor=tk.W
+                )
+                subtitle_label.pack(anchor=tk.W, pady=(4, 0))
+                
+                # Hover effect
+                def on_enter(e):
+                    card_frame.configure(bg=self.palette.get("accent_color", "#2563eb"), highlightbackground=self.palette.get("accent_color", "#2563eb"))
+                    content_frame.configure(bg=self.palette.get("accent_color", "#2563eb"))
+                    icon_label.configure(bg=self.palette.get("accent_color", "#2563eb"), fg="#ffffff")
+                    text_frame.configure(bg=self.palette.get("accent_color", "#2563eb"))
+                    title_label.configure(bg=self.palette.get("accent_color", "#2563eb"), fg="#ffffff")
+                    subtitle_label.configure(bg=self.palette.get("accent_color", "#2563eb"), fg="#f0f0f0")
+                
+                def on_leave(e):
+                    card_frame.configure(bg=self.palette.get("app_bg", "#f9fafb"), highlightbackground=self.palette.get("entry_border", "#e5e7eb"))
+                    content_frame.configure(bg=self.palette.get("app_bg", "#f9fafb"))
+                    icon_label.configure(bg=self.palette.get("app_bg", "#f9fafb"), fg=self.palette.get("accent_color", "#2563eb"))
+                    text_frame.configure(bg=self.palette.get("app_bg", "#f9fafb"))
+                    title_label.configure(bg=self.palette.get("app_bg", "#f9fafb"), fg=self.palette.get("text_primary", "#111827"))
+                    subtitle_label.configure(bg=self.palette.get("app_bg", "#f9fafb"), fg=self.palette.get("text_secondary", "#6b7280"))
+                
+                card_frame.bind('<Enter>', on_enter)
+                card_frame.bind('<Leave>', on_leave)
+                content_frame.bind('<Enter>', on_enter)
+                content_frame.bind('<Leave>', on_leave)
+                icon_label.bind('<Enter>', on_enter)
+                icon_label.bind('<Leave>', on_leave)
+                text_frame.bind('<Enter>', on_enter)
+                text_frame.bind('<Leave>', on_leave)
+                title_label.bind('<Enter>', on_enter)
+                title_label.bind('<Leave>', on_leave)
+                subtitle_label.bind('<Enter>', on_enter)
+                subtitle_label.bind('<Leave>', on_leave)
+                
+                if on_click:
+                    def handle_click(e):
+                        on_click()
+                    card_frame.bind('<Button-1>', handle_click)
+                    content_frame.bind('<Button-1>', handle_click)
+                    icon_label.bind('<Button-1>', handle_click)
+                    text_frame.bind('<Button-1>', handle_click)
+                    title_label.bind('<Button-1>', handle_click)
+                    subtitle_label.bind('<Button-1>', handle_click)
+                
+                return card_frame
+            
+            def do_search():
+                query = search_entry.get().strip()
+                if query == "Search transactions, accounts, customers, vendors...":
+                    query = ""
+                
+                # Clear results
+                for widget in results_frame.winfo_children():
+                    widget.destroy()
+                
+                if not query or len(query) < 2:
+                    # Show empty state
+                    empty_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                    empty_frame.pack(fill=tk.BOTH, expand=True, pady=80)
+                    
+                    empty_icon = tk.Label(
+                        empty_frame,
+                        text="🔍",
+                        font=("{Segoe UI} 64"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_secondary", "#9ca3af")
+                    )
+                    empty_icon.pack()
+                    
+                    empty_title = tk.Label(
+                        empty_frame,
+                        text="Start searching",
+                        font=("{Segoe UI Semibold} 18"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_primary", "#111827")
+                    )
+                    empty_title.pack(pady=(16, 8))
+                    
+                    empty_subtitle = tk.Label(
+                        empty_frame,
+                        text="Enter at least 2 characters to search across transactions, accounts, customers, and vendors.",
+                        font=("{Segoe UI} 11"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_secondary", "#6b7280")
+                    )
+                    empty_subtitle.pack()
+                    return
+                
+                # Perform search
+                results = search.global_search(query, limit=20)
+                
+                total_results = sum(len(v) for v in results.values())
+                
+                if total_results == 0:
+                    # No results state
+                    empty_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                    empty_frame.pack(fill=tk.BOTH, expand=True, pady=80)
+                    
+                    empty_icon = tk.Label(
+                        empty_frame,
+                        text="🔎",
+                        font=("{Segoe UI} 64"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_secondary", "#9ca3af")
+                    )
+                    empty_icon.pack()
+                    
+                    empty_title = tk.Label(
+                        empty_frame,
+                        text="No results found",
+                        font=("{Segoe UI Semibold} 18"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_primary", "#111827")
+                    )
+                    empty_title.pack(pady=(16, 8))
+                    
+                    empty_subtitle = tk.Label(
+                        empty_frame,
+                        text=f"No matches found for '{query}'. Try different keywords.",
+                        font=("{Segoe UI} 11"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_secondary", "#6b7280")
+                    )
+                    empty_subtitle.pack()
+                    return
+                
+                # Show results count
+                count_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                count_frame.pack(fill=tk.X, pady=(0, 12))
+                
+                count_label = tk.Label(
+                    count_frame,
+                    text=f"Found {total_results} result{'s' if total_results != 1 else ''}",
+                    font=("{Segoe UI Semibold} 12"),
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    fg=self.palette.get("text_secondary", "#6b7280")
+                )
+                count_label.pack(side=tk.LEFT)
+                
+                # Journal Entries
+                if results['journal_entries']:
+                    section_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                    section_frame.pack(fill=tk.X, pady=(0, 8))
+                    
+                    section_label = tk.Label(
+                        section_frame,
+                        text=f"🧾 Journal Entries ({len(results['journal_entries'])})",
+                        font=("{Segoe UI Semibold} 14"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_primary", "#111827")
+                    )
+                    section_label.pack(anchor=tk.W, pady=(0, 8))
+                    
+                    for entry in results['journal_entries']:
+                        date_str = entry.get('date', '')[:10] if entry.get('date') else 'No date'
+                        desc = entry.get('description', 'No description')[:80]
+                        status = entry.get('status', 'posted')
+                        entry_id = entry.get('id')
+                        
+                        def navigate_to_entry(eid=entry_id):
+                            dialog.destroy()
+                            self._nav_to(0)  # Navigate to Transactions tab
+                            # Could add logic to highlight/select the entry
+                        
+                        create_result_card(
+                            section_frame,
+                            "🧾",
+                            desc,
+                            f"{date_str} • Status: {status}",
+                            "journal_entry",
+                            entry_id,
+                            navigate_to_entry
+                        )
+                
+                # Accounts
+                if results['accounts']:
+                    section_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                    section_frame.pack(fill=tk.X, pady=(0, 8))
+                    
+                    section_label = tk.Label(
+                        section_frame,
+                        text=f"📚 Accounts ({len(results['accounts'])})",
+                        font=("{Segoe UI Semibold} 14"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_primary", "#111827")
+                    )
+                    section_label.pack(anchor=tk.W, pady=(0, 8))
+                    
+                    for account in results['accounts']:
+                        code = account.get('code', '')
+                        name = account.get('name', 'No name')
+                        acc_type = account.get('type', '')
+                        acc_id = account.get('id')
+                        
+                        def navigate_to_account(aid=acc_id):
+                            dialog.destroy()
+                            self._nav_to(2)  # Navigate to Ledger tab
+                            # Could add logic to filter by account
+                        
+                        create_result_card(
+                            section_frame,
+                            "📚",
+                            f"{code} - {name}",
+                            f"Type: {acc_type}",
+                            "account",
+                            acc_id,
+                            navigate_to_account
+                        )
+                
+                # Customers
+                if results['customers']:
+                    section_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                    section_frame.pack(fill=tk.X, pady=(0, 8))
+                    
+                    section_label = tk.Label(
+                        section_frame,
+                        text=f"👤 Customers ({len(results['customers'])})",
+                        font=("{Segoe UI Semibold} 14"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_primary", "#111827")
+                    )
+                    section_label.pack(anchor=tk.W, pady=(0, 8))
+                    
+                    for customer in results['customers']:
+                        code = customer.get('code', '')
+                        name = customer.get('name', 'No name')
+                        contact = customer.get('contact', '')
+                        email = customer.get('email', '')
+                        cust_id = customer.get('id')
+                        
+                        subtitle = f"Code: {code}"
+                        if contact:
+                            subtitle += f" • Contact: {contact}"
+                        if email:
+                            subtitle += f" • {email}"
+                        
+                        def navigate_to_customer(cid=cust_id):
+                            dialog.destroy()
+                            # Could navigate to customer details if implemented
+                        
+                        create_result_card(
+                            section_frame,
+                            "👤",
+                            name,
+                            subtitle,
+                            "customer",
+                            cust_id,
+                            navigate_to_customer
+                        )
+                
+                # Vendors
+                if results['vendors']:
+                    section_frame = tk.Frame(results_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                    section_frame.pack(fill=tk.X, pady=(0, 8))
+                    
+                    section_label = tk.Label(
+                        section_frame,
+                        text=f"🏢 Vendors ({len(results['vendors'])})",
+                        font=("{Segoe UI Semibold} 14"),
+                        bg=self.palette.get("surface_bg", "#ffffff"),
+                        fg=self.palette.get("text_primary", "#111827")
+                    )
+                    section_label.pack(anchor=tk.W, pady=(0, 8))
+                    
+                    for vendor in results['vendors']:
+                        code = vendor.get('code', '')
+                        name = vendor.get('name', 'No name')
+                        contact = vendor.get('contact', '')
+                        email = vendor.get('email', '')
+                        vend_id = vendor.get('id')
+                        
+                        subtitle = f"Code: {code}"
+                        if contact:
+                            subtitle += f" • Contact: {contact}"
+                        if email:
+                            subtitle += f" • {email}"
+                        
+                        def navigate_to_vendor(vid=vend_id):
+                            dialog.destroy()
+                            # Could navigate to vendor details if implemented
+                        
+                        create_result_card(
+                            section_frame,
+                            "🏢",
+                            name,
+                            subtitle,
+                            "vendor",
+                            vend_id,
+                            navigate_to_vendor
+                        )
+                
+                canvas.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            
+            search_entry.bind('<Return>', lambda e: do_search())
+            search_entry.bind('<KeyRelease>', lambda e: do_search() if len(search_entry.get().strip()) >= 2 else None)
+            
+            # Action buttons
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="🔄 Clear",
+                command=lambda: (search_entry.delete(0, tk.END), search_entry.insert(0, "Search transactions, accounts, customers, vendors..."), search_entry.configure(fg=self.palette.get("text_secondary", "#9ca3af")), do_search()),
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                btn_frame,
+                text="Close",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+            # Initial empty state
+            do_search()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Search error: {e}")
+    
+    def _show_backup_dialog(self) -> None:
+        """Show backup dialog."""
+        try:
+            from . import backup
+            
+            # Show dialog for backup description
+            dialog = tk.Toplevel(self)
+            dialog.title("Backup Database")
+            dialog.transient(self)
+            dialog.grab_set()
+            dialog.geometry("500x200")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(
+                main_frame,
+                text="Create Database Backup",
+                font=("{Segoe UI Semibold} 16"),
+                style="TLabel"
+            ).pack(pady=(0, 12))
+            
+            ttk.Label(
+                main_frame,
+                text="Enter a description for this backup (optional):",
+                style="TLabel"
+            ).pack(anchor=tk.W, pady=(0, 8))
+            
+            desc_var = tk.StringVar()
+            desc_entry = ttk.Entry(main_frame, textvariable=desc_var, width=40, style="Techfix.TEntry")
+            desc_entry.pack(fill=tk.X, pady=(0, 12))
+            desc_entry.focus()
+            
+            info_label = ttk.Label(
+                main_frame,
+                text="Backup will include database and settings.",
+                style="TLabel",
+                foreground=self.palette.get("text_secondary", "#6b7280")
+            )
+            info_label.pack(anchor=tk.W, pady=(0, 12))
+            
+            def create_backup():
+                description = desc_var.get().strip() or None
+                dialog.destroy()
+                
+                # Show progress
+                self.set_status("Creating backup...", "info")
+                self.update()
+                
+                try:
+                    backup_path = backup.create_full_backup(description)
+                    
+                    if backup_path:
+                        # Get file size
+                        try:
+                            size_bytes = backup_path.stat().st_size
+                            size_str = f"{size_bytes / (1024*1024):.2f} MB" if size_bytes > 1024*1024 else f"{size_bytes / 1024:.2f} KB"
+                        except:
+                            size_str = "Unknown"
+                        
+                        messagebox.showinfo(
+                            "Backup Created Successfully",
+                            f"Backup created successfully!\n\n"
+                            f"File: {backup_path.name}\n"
+                            f"Size: {size_str}\n"
+                            f"Location: {backup_path.parent}\n\n"
+                            f"Your database and settings have been backed up.",
+                            parent=self
+                        )
+                        self.set_status(f"Backup created: {backup_path.name}", "success")
+                    else:
+                        messagebox.showerror("Backup Failed", "Failed to create backup. Please check the logs for details.", parent=self)
+                        self.set_status("Backup failed", "error")
+                except Exception as e:
+                    logger.error(f"Backup error: {e}", exc_info=True)
+                    messagebox.showerror("Backup Error", f"An error occurred while creating backup:\n{e}", parent=self)
+                    self.set_status("Backup error", "error")
+            
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(12, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Create Backup",
+                command=create_backup,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+            # Allow Enter key to create backup
+            desc_entry.bind('<Return>', lambda e: create_backup())
+            
+        except Exception as e:
+            logger.error(f"Backup dialog error: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Backup dialog error: {e}")
+    
+    def _show_restore_dialog(self) -> None:
+        """Show restore dialog with list of available backups."""
+        try:
+            from . import backup
+            
+            backups = backup.list_backups()
+            if not backups:
+                messagebox.showinfo("No Backups", "No backups found. Please create a backup first.", parent=self)
+                return
+            
+            # Create dialog with backup list
+            dialog = tk.Toplevel(self)
+            dialog.title("Restore Database")
+            dialog.transient(self)
+            dialog.grab_set()
+            dialog.geometry("700x500")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(
+                main_frame,
+                text="Select Backup to Restore",
+                font=("{Segoe UI Semibold} 16"),
+                style="TLabel"
+            ).pack(pady=(0, 12))
+            
+            # Backup list frame
+            list_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
+            
+            # Treeview for backups
+            columns = ("Name", "Type", "Size", "Created")
+            backup_tree = ttk.Treeview(list_frame, columns=columns, show="headings", style="Techfix.Treeview", selectmode=tk.BROWSE)
+            
+            for col in columns:
+                backup_tree.heading(col, text=col)
+                if col == "Name":
+                    backup_tree.column(col, width=300, stretch=True)
+                elif col == "Type":
+                    backup_tree.column(col, width=100, stretch=False)
+                elif col == "Size":
+                    backup_tree.column(col, width=120, stretch=False)
+                else:
+                    backup_tree.column(col, width=180, stretch=False)
+            
+            scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=backup_tree.yview)
+            backup_tree.configure(yscrollcommand=scrollbar.set)
+            backup_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Populate backup list
+            def format_size(size_bytes):
+                """Format file size in human-readable format."""
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if size_bytes < 1024.0:
+                        return f"{size_bytes:.1f} {unit}"
+                    size_bytes /= 1024.0
+                return f"{size_bytes:.1f} TB"
+            
+            selected_backup = None
+            for backup_info in backups:
+                created_str = backup_info['created'].strftime("%Y-%m-%d %H:%M:%S")
+                size_str = format_size(backup_info['size'])
+                type_str = backup_info['type'].title()
+                
+                item_id = backup_tree.insert('', 'end', values=(
+                    backup_info['name'],
+                    type_str,
+                    size_str,
+                    created_str
+                ))
+                # Store backup path in item tags
+                backup_tree.set(item_id, 'path', str(backup_info['path']))
+            
+            # Select first item by default
+            if backups:
+                first_item = backup_tree.get_children()[0]
+                backup_tree.selection_set(first_item)
+                backup_tree.focus(first_item)
+            
+            def on_backup_select(event):
+                selection = backup_tree.selection()
+                if selection:
+                    item = backup_tree.item(selection[0])
+                    nonlocal selected_backup
+                    selected_backup = item.get('values', [])
+                    # Get path from stored data
+                    try:
+                        selected_backup = backup_tree.set(selection[0], 'path')
+                    except:
+                        # Fallback: find by name
+                        for backup_info in backups:
+                            if backup_info['name'] == item['values'][0]:
+                                selected_backup = str(backup_info['path'])
+                                break
+            
+            backup_tree.bind('<<TreeviewSelect>>', on_backup_select)
+            
+            # Buttons
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(12, 0))
+            
+            def perform_restore():
+                selection = backup_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a backup to restore.", parent=dialog)
+                    return
+                
+                item = backup_tree.item(selection[0])
+                try:
+                    backup_path_str = backup_tree.set(selection[0], 'path')
+                    if not backup_path_str:
+                        # Fallback: find by name
+                        for backup_info in backups:
+                            if backup_info['name'] == item['values'][0]:
+                                backup_path_str = str(backup_info['path'])
+                                break
+                    
+                    if not backup_path_str:
+                        messagebox.showerror("Error", "Could not determine backup path.", parent=dialog)
+                        return
+                    
+                    backup_path = Path(backup_path_str)
+                    
+                    if not messagebox.askyesno(
+                        "Confirm Restore",
+                        f"This will replace the current database with:\n{backup_path.name}\n\n"
+                        f"Type: {item['values'][1]}\n"
+                        f"Size: {item['values'][2]}\n"
+                        f"Created: {item['values'][3]}\n\n"
+                        "A backup of your current database will be created first.\n"
+                        "Continue?",
+                        parent=dialog
+                    ):
+                        return
+                    
+                    # Close database connections before restore
+                    try:
+                        if hasattr(self, 'engine') and self.engine:
+                            self.engine.close()
+                    except:
+                        pass
+                    
+                    # Perform restore
+                    if backup_path.suffix == '.zip':
+                        success = backup.restore_full_backup(backup_path)
+                    else:
+                        success = backup.restore_backup(backup_path)
+                    
+                    if success:
+                        messagebox.showinfo(
+                            "Success",
+                            "Database restored successfully.\n\n"
+                            "The application will now close.\n"
+                            "Please restart to use the restored database.",
+                            parent=dialog
+                        )
+                        dialog.destroy()
+                        self._on_close()
+                    else:
+                        messagebox.showerror("Error", "Restore failed. Please check the logs for details.", parent=dialog)
+                except Exception as e:
+                    logger.error(f"Restore error: {e}", exc_info=True)
+                    messagebox.showerror("Error", f"Restore failed: {e}", parent=dialog)
+            
+            ttk.Button(
+                btn_frame,
+                text="Restore Selected",
+                command=perform_restore,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+            # Also allow file picker as fallback
+            def browse_file():
+                backup_path = filedialog.askopenfilename(
+                    title="Select Backup File",
+                    initialdir=backup.BACKUP_DIR,
+                    filetypes=[("Backup files", "*.db *.zip"), ("All files", "*.*")],
+                    parent=dialog
+                )
+                if backup_path:
+                    backup_path = Path(backup_path)
+                    if messagebox.askyesno(
+                        "Confirm Restore",
+                        f"Restore from {backup_path.name}?\n\nThis will replace the current database.",
+                        parent=dialog
+                    ):
+                        try:
+                            if hasattr(self, 'engine') and self.engine:
+                                self.engine.close()
+                        except:
+                            pass
+                        
+                        if backup_path.suffix == '.zip':
+                            success = backup.restore_full_backup(backup_path)
+                        else:
+                            success = backup.restore_backup(backup_path)
+                        
+                        if success:
+                            messagebox.showinfo("Success", "Database restored. Please restart the application.", parent=dialog)
+                            dialog.destroy()
+                            self._on_close()
+                        else:
+                            messagebox.showerror("Error", "Restore failed", parent=dialog)
+            
+            ttk.Button(
+                btn_frame,
+                text="Browse File...",
+                command=browse_file,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT)
+            
+        except Exception as e:
+            logger.error(f"Restore dialog error: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Restore dialog error: {e}")
+    
+    def _show_import_dialog(self) -> None:
+        """Show import dialog."""
+        try:
+            from . import import_data
+            
+            file_path = filedialog.askopenfilename(
+                title="Import Transactions",
+                filetypes=[
+                    ("Excel files", "*.xlsx *.xls"),
+                    ("CSV files", "*.csv"),
+                    ("All files", "*.*")
+                ],
+                parent=self
+            )
+            
+            if not file_path:
+                return
+            
+            file_path = Path(file_path)
+            
+            # Validate file exists
+            if not file_path.exists():
+                messagebox.showerror("Error", f"File not found: {file_path}", parent=self)
+                return
+            
+            # Check file format
+            if file_path.suffix.lower() not in ['.xlsx', '.xls', '.csv']:
+                messagebox.showerror("Error", "Unsupported file format. Please select an Excel (.xlsx, .xls) or CSV (.csv) file.", parent=self)
+                return
+            
+            # Check if pandas is available for CSV
+            if file_path.suffix.lower() == '.csv':
+                if not import_data.PANDAS_AVAILABLE:
+                    messagebox.showerror(
+                        "Error",
+                        "CSV import requires pandas library.\n\n"
+                        "Please install it using: pip install pandas",
+                        parent=self
+                    )
+                    return
+            
+            # Show progress
+            self.set_status(f"Importing transactions from {file_path.name}...", "info")
+            self.update()
+            
+            try:
+                # Perform import
+                if file_path.suffix.lower() in ['.xlsx', '.xls']:
+                    success, errors, error_msgs = import_data.import_transactions_from_excel(
+                        file_path,
+                        period_id=self.current_period_id,
+                        default_status="draft"
+                    )
+                else:  # CSV
+                    success, errors, error_msgs = import_data.import_transactions_from_csv(
+                        file_path,
+                        period_id=self.current_period_id,
+                        default_status="draft"
+                    )
+                
+                # Build result message
+                if success > 0:
+                    msg = f"✅ Successfully imported {success} transaction(s)"
+                    if errors > 0:
+                        msg += f"\n⚠️ {errors} error(s) occurred"
+                        if error_msgs:
+                            msg += "\n\nErrors:\n" + "\n".join(error_msgs[:10])
+                            if len(error_msgs) > 10:
+                                msg += f"\n... and {len(error_msgs) - 10} more error(s)"
+                    
+                    messagebox.showinfo("Import Complete", msg, parent=self)
+                    self.set_status(f"Imported {success} transaction(s) from {file_path.name}", "success")
+                    
+                    # Refresh views
+                    self._load_all_views()
+                else:
+                    if errors > 0:
+                        msg = f"❌ Import failed: {errors} error(s) occurred"
+                        if error_msgs:
+                            msg += "\n\nErrors:\n" + "\n".join(error_msgs[:10])
+                            if len(error_msgs) > 10:
+                                msg += f"\n... and {len(error_msgs) - 10} more error(s)"
+                        messagebox.showerror("Import Failed", msg, parent=self)
+                        self.set_status("Import failed", "error")
+                    else:
+                        messagebox.showwarning("Import Complete", "No transactions were imported. Please check your file format.", parent=self)
+                        self.set_status("No transactions imported", "warning")
+                        
+            except Exception as import_error:
+                logger.error(f"Import error: {import_error}", exc_info=True)
+                error_msg = str(import_error)
+                if "pandas" in error_msg.lower() or "openpyxl" in error_msg.lower():
+                    error_msg = f"Import library error: {error_msg}\n\nPlease ensure required libraries are installed:\npip install pandas openpyxl"
+                messagebox.showerror("Import Error", f"An error occurred during import:\n\n{error_msg}", parent=self)
+                self.set_status("Import error", "error")
+                
+        except Exception as e:
+            logger.error(f"Import dialog error: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Import dialog error: {e}")
+    
+    def _show_dashboard(self) -> None:
+        """Show analytics dashboard."""
+        try:
+            # Update navigation state to highlight Dashboard button
+            self._current_nav_index = -1
+            for ind, btn, nav_idx in getattr(self, '_nav_buttons', ()):
+                if nav_idx == -1:
+                    try:
+                        ind.configure(bg=self.palette.get('accent_color'))
+                    except Exception:
+                        pass
+                    try:
+                        btn.configure(style='Techfix.Nav.Selected.TButton')
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        ind.configure(bg=self.palette.get('surface_bg'))
+                    except Exception:
+                        pass
+                    try:
+                        btn.configure(style='Techfix.Nav.TButton')
+                    except Exception:
+                        pass
+            
+            from . import analytics
+            
+            dialog = tk.Toplevel(self)
+            dialog.title("Dashboard - Analytics")
+            dialog.transient(self)
+            dialog.geometry("1000x700")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            # Center dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (1000 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (700 // 2)
+            dialog.geometry(f"1000x700+{x}+{y}")
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Header section
+            header_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            header_frame.pack(fill=tk.X, pady=(0, 24))
+            
+            header_title = ttk.Label(
+                header_frame,
+                text="📊 Dashboard",
+                font=("{Segoe UI Semibold} 24"),
+                style="TLabel"
+            )
+            header_title.pack(side=tk.LEFT)
+            
+            header_subtitle = ttk.Label(
+                header_frame,
+                text="Financial Overview & Analytics",
+                font=("{Segoe UI} 12"),
+                foreground=self.palette.get("text_secondary", "#6b7280"),
+                style="TLabel"
+            )
+            header_subtitle.pack(side=tk.LEFT, padx=(12, 0))
+            
+            metrics = analytics.get_financial_metrics(period_id=self.current_period_id)
+            
+            # Enhanced metrics cards in a grid
+            metrics_container = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            metrics_container.pack(fill=tk.X, pady=(0, 24))
+            
+            # Configure grid columns
+            for i in range(4):
+                metrics_container.columnconfigure(i, weight=1, uniform="metric")
+            
+            def create_metric_card(parent, icon, title, value, color="#2563eb", row=0, col=0):
+                """Create a styled metric card."""
+                card_frame = tk.Frame(
+                    parent,
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    relief=tk.FLAT,
+                    bd=0
+                )
+                card_frame.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
+                
+                # Card background with subtle border
+                card_bg = tk.Frame(
+                    card_frame,
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    relief=tk.FLAT,
+                    bd=1,
+                    highlightbackground=self.palette.get("entry_border", "#e5e7eb"),
+                    highlightthickness=1
+                )
+                card_bg.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+                
+                content_frame = tk.Frame(card_bg, bg=self.palette.get("app_bg", "#f9fafb"))
+                content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+                
+                # Icon and title row
+                icon_frame = tk.Frame(content_frame, bg=self.palette.get("app_bg", "#f9fafb"))
+                icon_frame.pack(fill=tk.X, pady=(0, 12))
+                
+                icon_label = tk.Label(
+                    icon_frame,
+                    text=icon,
+                    font=("{Segoe UI} 24"),
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    fg=color
+                )
+                icon_label.pack(side=tk.LEFT)
+                
+                title_label = tk.Label(
+                    icon_frame,
+                    text=title,
+                    font=("{Segoe UI} 11"),
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    fg=self.palette.get("text_secondary", "#6b7280")
+                )
+                title_label.pack(side=tk.LEFT, padx=(12, 0))
+                
+                # Value
+                value_label = tk.Label(
+                    content_frame,
+                    text=value,
+                    font=("{Segoe UI Semibold} 20"),
+                    bg=self.palette.get("app_bg", "#f9fafb"),
+                    fg=self.palette.get("text_primary", "#111827"),
+                    anchor=tk.W
+                )
+                value_label.pack(fill=tk.X)
+                
+                return card_frame
+            
+            # Create metric cards
+            revenue = metrics.get('total_revenue', 0)
+            expenses = metrics.get('total_expenses', 0)
+            net_income = metrics.get('net_income', 0)
+            txn_count = metrics.get('transaction_count', 0)
+            
+            create_metric_card(metrics_container, "💰", "Total Revenue", f"₱{revenue:,.2f}", "#10b981", 0, 0)
+            create_metric_card(metrics_container, "📉", "Total Expenses", f"₱{expenses:,.2f}", "#ef4444", 0, 1)
+            create_metric_card(metrics_container, "📊", "Net Income", f"₱{net_income:,.2f}", "#3b82f6", 0, 2)
+            create_metric_card(metrics_container, "🧾", "Transactions", f"{txn_count:,}", "#8b5cf6", 0, 3)
+            
+            # Revenue trend chart section
+            trend_frame = ttk.LabelFrame(main_frame, text="📈 Revenue Trend (Last 30 Days)", style="Techfix.TLabelframe")
+            trend_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+            
+            trend_inner = ttk.Frame(trend_frame, style="Techfix.Surface.TFrame")
+            trend_inner.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+            
+            trend_data = analytics.get_revenue_trend(days=30)
+            if trend_data:
+                chart = self._create_mini_chart(trend_inner, [d['revenue'] for d in trend_data], width=920, height=250, title=None)
+                chart.pack(fill=tk.BOTH, expand=True)
+            else:
+                empty_chart = tk.Label(
+                    trend_inner,
+                    text="📊 No revenue data available",
+                    font=("{Segoe UI} 14"),
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    fg=self.palette.get("text_secondary", "#6b7280")
+                )
+                empty_chart.pack(expand=True)
+            
+            # Action buttons
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X)
+            
+            def refresh_dashboard():
+                loading = self.show_loading("Please wait... Refreshing dashboard...", dialog)
+                try:
+                    dialog.update()  # Update UI to show loading indicator
+                    dialog.destroy()
+                    self._show_dashboard()
+                finally:
+                    if loading:
+                        self.hide_loading(loading)
+            
+            ttk.Button(
+                btn_frame,
+                text="🔄 Refresh",
+                command=refresh_dashboard,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                btn_frame,
+                text="Close",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Dashboard error: {e}")
+    
+    def _show_notifications(self) -> None:
+        """Show notifications window."""
+        try:
+            from . import notifications
+            
+            dialog = tk.Toplevel(self)
+            dialog.title("Notifications - TechFix")
+            dialog.transient(self)
+            dialog.grab_set()
+            dialog.geometry("800x600")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            # Center dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (800 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (600 // 2)
+            dialog.geometry(f"800x600+{x}+{y}")
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Enhanced header
+            header_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            header_frame.pack(fill=tk.X, pady=(0, 20))
+            
+            header_left = ttk.Frame(header_frame, style="Techfix.Surface.TFrame")
+            header_left.pack(side=tk.LEFT, fill=tk.Y)
+            
+            ttk.Label(
+                header_left,
+                text="📬 Notifications",
+                font=("{Segoe UI Semibold} 22"),
+                style="TLabel"
+            ).pack(side=tk.LEFT)
+            
+            user_id = self.current_user['id'] if self.current_user else None
+            notifs = notifications.get_user_notifications(user_id, unread_only=False, limit=50)
+            unread_count = sum(1 for n in notifs if n.get('is_read', 0) == 0)
+            
+            if unread_count > 0:
+                badge_frame = tk.Frame(header_left, bg=self.palette.get("accent_color", "#2563eb"), relief=tk.FLAT)
+                badge_frame.pack(side=tk.LEFT, padx=(16, 0))
+                
+                count_label = tk.Label(
+                    badge_frame,
+                    text=f"{unread_count} unread",
+                    font=("{Segoe UI Semibold} 11"),
+                    bg=self.palette.get("accent_color", "#2563eb"),
+                    fg="#ffffff",
+                    padx=12,
+                    pady=6
+                )
+                count_label.pack()
+            else:
+                status_label = ttk.Label(
+                    header_left,
+                    text="All caught up! ✓",
+                    font=("{Segoe UI} 12"),
+                    foreground="#10b981",
+                    style="TLabel"
+                )
+                status_label.pack(side=tk.LEFT, padx=(16, 0))
+            
+            # Action buttons in header (top right)
+            header_right = ttk.Frame(header_frame, style="Techfix.Surface.TFrame")
+            header_right.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            def mark_all_read():
+                if user_id:
+                    notifications.mark_all_read(user_id)
+                    dialog.destroy()
+                    self._show_notifications()  # Refresh
+            
+            if unread_count > 0:
+                ttk.Button(
+                    header_right,
+                    text="✓ Mark All as Read",
+                    command=mark_all_read,
+                    style="Techfix.TButton"
+                ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            def refresh_notifications():
+                loading = self.show_loading("Please wait... Refreshing notifications...", dialog)
+                try:
+                    dialog.update()  # Update UI to show loading indicator
+                    dialog.destroy()
+                    self._show_notifications()
+                finally:
+                    if loading:
+                        self.hide_loading(loading)
+            
+            ttk.Button(
+                header_right,
+                text="🔄 Refresh",
+                command=refresh_notifications,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                header_right,
+                text="Close",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT)
+            
+            # Scrollable frame for notifications
+            canvas = tk.Canvas(
+                main_frame,
+                bg=self.palette.get("surface_bg", "#ffffff"),
+                highlightthickness=0,
+                bd=0
+            )
+            scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas, bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Mouse wheel scrolling - bind to canvas and dialog, not globally
+            def on_mousewheel(event):
+                try:
+                    if canvas.winfo_exists():
+                        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                except tk.TclError:
+                    pass  # Widget was destroyed
+            
+            canvas.bind("<MouseWheel>", on_mousewheel)
+            dialog.bind("<MouseWheel>", on_mousewheel)
+            
+            # Cleanup binding when dialog is destroyed
+            def cleanup_bindings():
+                try:
+                    canvas.unbind("<MouseWheel>")
+                    dialog.unbind("<MouseWheel>")
+                except:
+                    pass
+            dialog.bind("<Destroy>", lambda e: cleanup_bindings())
+            
+            if notifs:
+                for idx, notif in enumerate(notifs):
+                    is_unread = notif.get('is_read', 0) == 0
+                    
+                    # Create card frame
+                    card_frame = tk.Frame(
+                        scrollable_frame,
+                        bg=self.palette.get("app_bg", "#f9fafb") if is_unread else self.palette.get("surface_bg", "#ffffff"),
+                        relief=tk.FLAT,
+                        bd=1,
+                        highlightbackground=self.palette.get("accent_color", "#2563eb") if is_unread else self.palette.get("entry_border", "#e5e7eb"),
+                        highlightthickness=2 if is_unread else 1
+                    )
+                    card_frame.pack(fill=tk.X, pady=6, padx=4)
+                    
+                    # Card content
+                    content_frame = tk.Frame(card_frame, bg=card_frame.cget("bg"))
+                    content_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+                    
+                    # Top row: icon, title, and action button
+                    top_row = tk.Frame(content_frame, bg=card_frame.cget("bg"))
+                    top_row.pack(fill=tk.X, pady=(0, 8))
+                    
+                    # Notification type icon
+                    notif_type = notif.get('type', 'info')
+                    icon_map = {
+                        'info': 'ℹ️',
+                        'success': '✅',
+                        'warning': '⚠️',
+                        'error': '❌'
+                    }
+                    icon_text = icon_map.get(notif_type, '📌')
+                    
+                    icon_label = tk.Label(
+                        top_row,
+                        text=icon_text,
+                        font=("{Segoe UI} 20"),
+                        bg=card_frame.cget("bg"),
+                        fg=self.palette.get("accent_color", "#2563eb") if is_unread else self.palette.get("text_secondary", "#6b7280")
+                    )
+                    icon_label.pack(side=tk.LEFT, padx=(0, 12))
+                    
+                    # Title and message frame
+                    text_frame = tk.Frame(top_row, bg=card_frame.cget("bg"))
+                    text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                    
+                    title_label = tk.Label(
+                        text_frame,
+                        text=notif.get('title', 'Notification'),
+                        font=("{Segoe UI Semibold} 13"),
+                        bg=card_frame.cget("bg"),
+                        fg=self.palette.get("text_primary", "#111827"),
+                        anchor=tk.W
+                    )
+                    title_label.pack(anchor=tk.W)
+                    
+                    message_label = tk.Label(
+                        text_frame,
+                        text=notif.get('message', ''),
+                        font=("{Segoe UI} 11"),
+                        bg=card_frame.cget("bg"),
+                        fg=self.palette.get("text_secondary", "#6b7280"),
+                        anchor=tk.W,
+                        wraplength=600,
+                        justify=tk.LEFT
+                    )
+                    message_label.pack(anchor=tk.W, pady=(4, 0))
+                    
+                    # Bottom row: timestamp and action
+                    bottom_row = tk.Frame(content_frame, bg=card_frame.cget("bg"))
+                    bottom_row.pack(fill=tk.X, pady=(8, 0))
+                    
+                    if notif.get('created_at'):
+                        time_text = notif.get('created_at', '')[:16].replace('T', ' ')
+                        time_label = tk.Label(
+                            bottom_row,
+                            text=f"🕒 {time_text}",
+                            font=("{Segoe UI} 9"),
+                            bg=card_frame.cget("bg"),
+                            fg=self.palette.get("text_secondary", "#9ca3af")
+                        )
+                        time_label.pack(side=tk.LEFT)
+                    
+                    # Mark as read button for unread notifications
+                    if is_unread:
+                        def mark_read(nid=notif.get('id')):
+                            if nid:
+                                notifications.mark_notification_read(nid)
+                                dialog.destroy()
+                                self._show_notifications()  # Refresh
+                        
+                        read_btn = tk.Button(
+                            bottom_row,
+                            text="✓ Mark as Read",
+                            command=mark_read,
+                            font=("{Segoe UI} 10"),
+                            bg=self.palette.get("accent_color", "#2563eb"),
+                            fg="#ffffff",
+                            relief=tk.FLAT,
+                            padx=16,
+                            pady=6,
+                            cursor="hand2",
+                            activebackground=self.palette.get("accent_hover", "#1d4ed8"),
+                            activeforeground="#ffffff"
+                        )
+                        read_btn.pack(side=tk.RIGHT)
+            else:
+                # Enhanced empty state
+                empty_frame = tk.Frame(scrollable_frame, bg=self.palette.get("surface_bg", "#ffffff"))
+                empty_frame.pack(fill=tk.BOTH, expand=True, pady=80)
+                
+                empty_icon = tk.Label(
+                    empty_frame,
+                    text="📭",
+                    font=("{Segoe UI} 64"),
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    fg=self.palette.get("text_secondary", "#9ca3af")
+                )
+                empty_icon.pack()
+                
+                empty_title = tk.Label(
+                    empty_frame,
+                    text="No notifications",
+                    font=("{Segoe UI Semibold} 18"),
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    fg=self.palette.get("text_primary", "#111827")
+                )
+                empty_title.pack(pady=(16, 8))
+                
+                empty_subtitle = tk.Label(
+                    empty_frame,
+                    text="You're all caught up! New notifications will appear here.",
+                    font=("{Segoe UI} 11"),
+                    bg=self.palette.get("surface_bg", "#ffffff"),
+                    fg=self.palette.get("text_secondary", "#6b7280")
+                )
+                empty_subtitle.pack()
+            
+        except Exception as e:
+            logger.error(f"Notifications error: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Notifications error: {e}")
+    
+    def _is_user_admin(self) -> bool:
+        """Check if current user is admin by verifying role from database."""
+        if not self.current_user or not self.current_user.get('id'):
+            logger.warning("Admin check failed: No current user or user ID")
+            return False
+        
+        try:
+            from . import db
+            user_id = self.current_user.get('id')
+            if not user_id:
+                logger.warning("Admin check failed: User ID is None or empty")
+                return False
+            
+            conn = db.get_connection()
+            try:
+                # Verify role directly from database - must be active and have Admin role
+                cur = conn.execute("""
+                    SELECT r.name as role_name, u.is_active
+                    FROM users u
+                    LEFT JOIN roles r ON u.role_id = r.id
+                    WHERE u.id = ? AND u.is_active = 1
+                """, (user_id,))
+                row = cur.fetchone()
+                if not row:
+                    logger.warning(f"Admin check failed: User {user_id} not found or inactive")
+                    return False
+                
+                role_name = row['role_name']
+                if not role_name:
+                    logger.warning(f"Admin check failed: User {user_id} has no role assigned")
+                    return False
+                
+                # Case-insensitive comparison - database stores "Admin" but we check for "admin"
+                role_name_lower = str(role_name).strip().lower()
+                is_admin = role_name_lower == 'admin'
+                
+                if not is_admin:
+                    logger.debug(f"Admin check failed: User {user_id} has role '{role_name}' (not Admin)")
+                
+                return is_admin
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error checking admin status: {e}", exc_info=True)
+            return False
+    
+    def _has_permission(self, permission: str) -> bool:
+        """Check if current user has a specific permission."""
+        if not self.current_user or not self.current_user.get('role_id'):
+            return False
+        
+        try:
+            from . import auth
+            role_id = self.current_user.get('role_id')
+            return auth.has_permission(role_id, permission)
+        except Exception as e:
+            logger.error(f"Error checking permission '{permission}': {e}", exc_info=True)
+            return False
+    
+    def _show_admin_panel(self) -> None:
+        """Show admin panel for user and system management."""
+        try:
+            # Check if user is admin - verify from database for security
+            if not self.current_user:
+                messagebox.showerror("Access Denied", "You must be logged in to access the admin panel.")
+                return
+            
+            # Verify admin status from database (not just cached user info)
+            if not self._is_user_admin():
+                messagebox.showerror("Access Denied", "Admin access required. Only users with Admin role can access this panel.")
+                return
+            
+            from . import auth, db
+            
+            dialog = tk.Toplevel(self)
+            dialog.title("Admin Panel - TechFix")
+            dialog.transient(self)
+            dialog.grab_set()
+            dialog.resizable(True, True)  # Allow resizing
+            
+            # Set initial size - reduced height significantly to ensure close button is visible
+            width, height = 1100, 650
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            # Center dialog and ensure it fits on screen with proper margins
+            dialog.update_idletasks()
+            screen_width = dialog.winfo_screenwidth()
+            screen_height = dialog.winfo_screenheight()
+            
+            # Ensure dialog fits on screen with generous margin for title bar (50px top, 50px bottom)
+            max_height = screen_height - 100  # 50px top + 50px bottom margin
+            if height > max_height:
+                height = max_height
+            if width > screen_width - 50:
+                width = screen_width - 50
+            
+            # Calculate position - ensure title bar is always visible
+            x = (screen_width // 2) - (width // 2)
+            # Position with at least 50px from top to ensure title bar is fully visible
+            y = max(50, (screen_height // 2) - (height // 2))
+            
+            # Double-check: if dialog would extend beyond screen, adjust
+            if y + height > screen_height - 20:
+                y = screen_height - height - 20
+            
+            dialog.geometry(f"{width}x{height}+{x}+{y}")
+            dialog.minsize(900, 550)  # Set minimum size
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Header
+            header_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            header_frame.pack(fill=tk.X, pady=(0, 20))
+            
+            ttk.Label(
+                header_frame,
+                text="⚙️ Admin Panel",
+                font=("{Segoe UI Semibold} 22"),
+                style="TLabel"
+            ).pack(side=tk.LEFT)
+            
+            # Tab notebook for different admin sections
+            notebook = ttk.Notebook(main_frame)
+            notebook.pack(fill=tk.BOTH, expand=True)
+            
+            # Users Tab
+            users_frame = ttk.Frame(notebook, style="Techfix.Surface.TFrame", padding=16)
+            notebook.add(users_frame, text="👥 Users")
+            
+            # Users header with actions
+            users_header = ttk.Frame(users_frame, style="Techfix.Surface.TFrame")
+            users_header.pack(fill=tk.X, pady=(0, 12))
+            
+            ttk.Label(
+                users_header,
+                text="User Management",
+                font=("{Segoe UI Semibold} 16"),
+                style="TLabel"
+            ).pack(side=tk.LEFT)
+            
+            btn_frame = ttk.Frame(users_header, style="Techfix.Surface.TFrame")
+            btn_frame.pack(side=tk.RIGHT)
+            
+            def refresh_users():
+                loading = self.show_loading("Please wait... Loading users...", dialog)
+                try:
+                    dialog.update()  # Update UI to show loading indicator
+                    # Clear existing items
+                    for item in users_tree.get_children():
+                        users_tree.delete(item)
+                    
+                    # Load users
+                    conn = db.get_connection()
+                    try:
+                        cur = conn.execute("""
+                            SELECT u.id, u.username, u.full_name, u.is_active, 
+                                   r.name as role_name, c.name as company_name,
+                                   u.created_at, u.last_login
+                            FROM users u
+                            LEFT JOIN roles r ON u.role_id = r.id
+                            LEFT JOIN companies c ON u.company_id = c.id
+                            ORDER BY u.username
+                        """)
+                        for row in cur.fetchall():
+                            status = "Active" if row['is_active'] else "Inactive"
+                            role = row['role_name'] or "No Role"
+                            company = row['company_name'] or "No Company"
+                            created = row['created_at'][:10] if row['created_at'] else "N/A"
+                            last_login = row['last_login'][:16] if row['last_login'] else "Never"
+                            
+                            users_tree.insert('', 'end', values=(
+                                row['id'],
+                                row['username'],
+                                row['full_name'] or '',
+                                role,
+                                company,
+                                status,
+                                created,
+                                last_login
+                            ))
+                    except Exception as e:
+                        logger.error(f"Error loading users: {e}", exc_info=True)
+                        messagebox.showerror("Error", f"Failed to load users: {e}")
+                    finally:
+                        conn.close()
+                finally:
+                    if loading:
+                        self.hide_loading(loading)
+            
+            ttk.Button(
+                btn_frame,
+                text="➕ New User",
+                command=lambda: self._show_create_user_dialog(dialog, refresh_users),
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                btn_frame,
+                text="🔄 Refresh",
+                command=refresh_users,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            # Users treeview
+            users_tree_frame = ttk.Frame(users_frame, style="Techfix.Surface.TFrame")
+            users_tree_frame.pack(fill=tk.BOTH, expand=True)
+            
+            columns = ("ID", "Username", "Full Name", "Role", "Company", "Status", "Created", "Last Login")
+            users_tree = ttk.Treeview(users_tree_frame, columns=columns, show="headings", style="Techfix.Treeview")
+            
+            for col in columns:
+                users_tree.heading(col, text=col)
+                if col == "ID":
+                    users_tree.column(col, width=50, stretch=False)
+                elif col in ("Status", "Role", "Company"):
+                    users_tree.column(col, width=100, stretch=False)
+                elif col == "Username":
+                    users_tree.column(col, width=120, stretch=False)
+                elif col in ("Created", "Last Login"):
+                    users_tree.column(col, width=120, stretch=False)
+                else:
+                    users_tree.column(col, width=150, stretch=True)
+            
+            scrollbar_users = ttk.Scrollbar(users_tree_frame, orient=tk.VERTICAL, command=users_tree.yview)
+            users_tree.configure(yscrollcommand=scrollbar_users.set)
+            users_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar_users.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # User actions frame
+            user_actions_frame = ttk.Frame(users_frame, style="Techfix.Surface.TFrame")
+            user_actions_frame.pack(fill=tk.X, pady=(12, 0))
+            
+            def edit_selected_user():
+                selection = users_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a user to edit.")
+                    return
+                item = users_tree.item(selection[0])
+                user_id = item['values'][0]
+                self._show_edit_user_dialog(dialog, user_id, refresh_users)
+            
+            def delete_selected_user():
+                # Security check: Verify admin status before allowing delete
+                if not self._is_user_admin():
+                    messagebox.showerror("Access Denied", "Admin access required.")
+                    return
+                
+                selection = users_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a user to delete.")
+                    return
+                item = users_tree.item(selection[0])
+                user_id = item['values'][0]
+                username = item['values'][1]
+                
+                if user_id == self.current_user['id']:
+                    messagebox.showerror("Error", "You cannot delete your own account.")
+                    return
+                
+                if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete user '{username}'? This action cannot be undone."):
+                    conn = db.get_connection()
+                    try:
+                        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                        conn.commit()
+                        messagebox.showinfo("Success", f"User '{username}' deleted successfully.")
+                        refresh_users()
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to delete user: {e}")
+                    finally:
+                        conn.close()
+            
+            def toggle_user_status():
+                # Security check: Verify admin status before allowing status change
+                if not self._is_user_admin():
+                    messagebox.showerror("Access Denied", "Admin access required.")
+                    return
+                
+                selection = users_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a user.")
+                    return
+                item = users_tree.item(selection[0])
+                user_id = item['values'][0]
+                username = item['values'][1]
+                current_status = item['values'][5]
+                new_status = 0 if current_status == "Active" else 1
+                
+                conn = db.get_connection()
+                try:
+                    conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+                    conn.commit()
+                    messagebox.showinfo("Success", f"User '{username}' status updated.")
+                    refresh_users()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to update user status: {e}")
+                finally:
+                    conn.close()
+            
+            def reset_user_password():
+                # Security check: Verify admin status before allowing password reset
+                if not self._is_user_admin():
+                    messagebox.showerror("Access Denied", "Admin access required.")
+                    return
+                
+                selection = users_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a user.")
+                    return
+                item = users_tree.item(selection[0])
+                user_id = item['values'][0]
+                username = item['values'][1]
+                
+                new_password = simpledialog.askstring(
+                    "Reset Password",
+                    f"Enter new password for '{username}':",
+                    show='*',
+                    parent=dialog
+                )
+                
+                if new_password:
+                    if auth.reset_password(user_id, new_password):
+                        messagebox.showinfo("Success", f"Password reset for user '{username}'.")
+                    else:
+                        messagebox.showerror("Error", "Failed to reset password.")
+            
+            ttk.Button(
+                user_actions_frame,
+                text="✏️ Edit",
+                command=edit_selected_user,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                user_actions_frame,
+                text="🔑 Reset Password",
+                command=reset_user_password,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                user_actions_frame,
+                text="🔄 Toggle Status",
+                command=toggle_user_status,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                user_actions_frame,
+                text="🗑️ Delete",
+                command=delete_selected_user,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            # Roles Tab
+            roles_frame = ttk.Frame(notebook, style="Techfix.Surface.TFrame", padding=16)
+            notebook.add(roles_frame, text="👤 Roles")
+            
+            roles_header = ttk.Frame(roles_frame, style="Techfix.Surface.TFrame")
+            roles_header.pack(fill=tk.X, pady=(0, 12))
+            
+            ttk.Label(
+                roles_header,
+                text="Role Management",
+                font=("{Segoe UI Semibold} 16"),
+                style="TLabel"
+            ).pack(side=tk.LEFT)
+            
+            def refresh_roles():
+                loading = self.show_loading("Please wait... Loading roles...", dialog)
+                try:
+                    dialog.update()  # Update UI to show loading indicator
+                    for item in roles_tree.get_children():
+                        roles_tree.delete(item)
+                    
+                    conn = db.get_connection()
+                    try:
+                        cur = conn.execute("SELECT id, name, description FROM roles ORDER BY name")
+                        for row in cur.fetchall():
+                            roles_tree.insert('', 'end', values=(
+                                row['id'],
+                                row['name'],
+                                row['description'] or ''
+                            ))
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to load roles: {e}")
+                    finally:
+                        conn.close()
+                finally:
+                    if loading:
+                        self.hide_loading(loading)
+            
+            roles_btn_frame = ttk.Frame(roles_header, style="Techfix.Surface.TFrame")
+            roles_btn_frame.pack(side=tk.RIGHT)
+            
+            ttk.Button(
+                roles_btn_frame,
+                text="➕ New Role",
+                command=lambda: self._show_create_role_dialog(dialog, refresh_roles),
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                roles_btn_frame,
+                text="🔄 Refresh",
+                command=refresh_roles,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT)
+            
+            roles_tree_frame = ttk.Frame(roles_frame, style="Techfix.Surface.TFrame")
+            roles_tree_frame.pack(fill=tk.BOTH, expand=True)
+            
+            roles_columns = ("ID", "Name", "Description")
+            roles_tree = ttk.Treeview(roles_tree_frame, columns=roles_columns, show="headings", style="Techfix.Treeview")
+            
+            for col in roles_columns:
+                roles_tree.heading(col, text=col)
+                if col == "ID":
+                    roles_tree.column(col, width=50, stretch=False)
+                else:
+                    roles_tree.column(col, width=200, stretch=True)
+            
+            scrollbar_roles = ttk.Scrollbar(roles_tree_frame, orient=tk.VERTICAL, command=roles_tree.yview)
+            roles_tree.configure(yscrollcommand=scrollbar_roles.set)
+            roles_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar_roles.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Double-click to edit
+            def on_role_double_click(event):
+                selection = roles_tree.selection()
+                if selection:
+                    item = roles_tree.item(selection[0])
+                    role_id = item['values'][0]
+                    self._show_edit_role_dialog(dialog, role_id, refresh_roles)
+            
+            roles_tree.bind('<Double-1>', on_role_double_click)
+            
+            # Role actions frame
+            role_actions_frame = ttk.Frame(roles_frame, style="Techfix.Surface.TFrame")
+            role_actions_frame.pack(fill=tk.X, pady=(12, 0))
+            
+            def edit_selected_role():
+                # Security check: Verify admin status
+                if not self._is_user_admin():
+                    messagebox.showerror("Access Denied", "Admin access required.")
+                    return
+                
+                selection = roles_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a role to edit.")
+                    return
+                item = roles_tree.item(selection[0])
+                role_id = item['values'][0]
+                self._show_edit_role_dialog(dialog, role_id, refresh_roles)
+            
+            def delete_selected_role():
+                # Security check: Verify admin status
+                if not self._is_user_admin():
+                    messagebox.showerror("Access Denied", "Admin access required.")
+                    return
+                
+                selection = roles_tree.selection()
+                if not selection:
+                    messagebox.showwarning("No Selection", "Please select a role to delete.")
+                    return
+                item = roles_tree.item(selection[0])
+                role_id = item['values'][0]
+                role_name = item['values'][1]
+                
+                # Check if role is in use
+                conn = db.get_connection()
+                try:
+                    user_count = conn.execute("SELECT COUNT(*) FROM users WHERE role_id = ?", (role_id,)).fetchone()[0]
+                    if user_count > 0:
+                        messagebox.showerror(
+                            "Cannot Delete",
+                            f"Cannot delete role '{role_name}' because it is assigned to {user_count} user(s).\nPlease reassign users to another role first."
+                        )
+                        return
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to check role usage: {e}")
+                finally:
+                    conn.close()
+                
+                if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete role '{role_name}'? This action cannot be undone."):
+                    conn = db.get_connection()
+                    try:
+                        conn.execute("DELETE FROM roles WHERE id = ?", (role_id,))
+                        conn.commit()
+                        messagebox.showinfo("Success", f"Role '{role_name}' deleted successfully.")
+                        refresh_roles()
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to delete role: {e}")
+                    finally:
+                        conn.close()
+            
+            ttk.Button(
+                role_actions_frame,
+                text="✏️ Edit",
+                command=edit_selected_role,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            ttk.Button(
+                role_actions_frame,
+                text="🗑️ Delete",
+                command=delete_selected_role,
+                style="Techfix.TButton"
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            
+            # System Info Tab
+            system_frame = ttk.Frame(notebook, style="Techfix.Surface.TFrame", padding=16)
+            notebook.add(system_frame, text="ℹ️ System Info")
+            
+            ttk.Label(
+                system_frame,
+                text="System Information",
+                font=("{Segoe UI Semibold} 16"),
+                style="TLabel"
+            ).pack(anchor=tk.W, pady=(0, 12))
+            
+            info_text = tk.Text(
+                system_frame,
+                wrap=tk.WORD,
+                font=("{Segoe UI} 11"),
+                bg=self.palette.get("surface_bg", "#ffffff"),
+                fg=self.palette.get("text_primary", "#111827"),
+                relief=tk.FLAT,
+                padx=12,
+                pady=12
+            )
+            info_text.pack(fill=tk.BOTH, expand=True)
+            
+            conn = db.get_connection()
+            try:
+                # Get system stats
+                user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                active_users = conn.execute("SELECT COUNT(*) FROM users WHERE is_active = 1").fetchone()[0]
+                role_count = conn.execute("SELECT COUNT(*) FROM roles").fetchone()[0]
+                company_count = conn.execute("SELECT COUNT(*) FROM companies").fetchone()[0]
+                entry_count = conn.execute("SELECT COUNT(*) FROM journal_entries").fetchone()[0]
+                account_count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+                
+                info_text.insert('1.0', f"""System Statistics:
+
+Users: {user_count} total ({active_users} active)
+Roles: {role_count}
+Companies: {company_count}
+Journal Entries: {entry_count}
+Accounts: {account_count}
+
+Database: techfix.sqlite3
+Current User: {self.current_user.get('username', 'N/A')}
+Role: {self.current_user.get('role_name', 'N/A')}
+""")
+                info_text.configure(state=tk.DISABLED)
+            except Exception as e:
+                info_text.insert('1.0', f"Error loading system information: {e}")
+                info_text.configure(state=tk.DISABLED)
+            finally:
+                conn.close()
+            
+            # Load initial data
+            refresh_users()
+            refresh_roles()
+            
+            # Close button
+            btn_frame_bottom = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame_bottom.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(
+                btn_frame_bottom,
+                text="Close",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+            # Final positioning check to ensure title bar is visible
+            dialog.update_idletasks()
+            dialog.update()
+            
+            # Verify dialog position - ensure title bar is visible
+            current_y = dialog.winfo_y()
+            if current_y < 30:  # If too close to top (title bar is ~30px)
+                screen_height = dialog.winfo_screenheight()
+                current_height = dialog.winfo_height()
+                # Reposition with proper top margin
+                new_y = 30
+                # Make sure dialog doesn't go off bottom of screen
+                if new_y + current_height > screen_height - 20:
+                    new_y = screen_height - current_height - 20
+                current_x = dialog.winfo_x()
+                dialog.geometry(f"{dialog.winfo_width()}x{current_height}+{current_x}+{new_y}")
+                dialog.update_idletasks()
+            
+            dialog.focus_force()
+            dialog.lift()
+            
+        except Exception as e:
+            logger.error(f"Admin panel error: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Admin panel error: {e}")
+    
+    def _show_create_user_dialog(self, parent, refresh_callback):
+        """Show dialog to create a new user."""
+        # Security check: Only admins can create users
+        if not self._is_user_admin():
+            messagebox.showerror("Access Denied", "Admin access required to create users.")
+            return
+        
+        try:
+            from . import auth, db
+            
+            dialog = tk.Toplevel(parent)
+            dialog.title("Create New User")
+            dialog.transient(parent)
+            dialog.grab_set()
+            dialog.geometry("500x400")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(
+                main_frame,
+                text="Create New User",
+                font=("{Segoe UI Semibold} 18"),
+                style="TLabel"
+            ).pack(pady=(0, 20))
+            
+            # Form fields
+            fields_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            fields_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(fields_frame, text="Username:", style="TLabel").grid(row=0, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            username_var = tk.StringVar()
+            username_entry = ttk.Entry(fields_frame, textvariable=username_var, width=30, style="Techfix.TEntry")
+            username_entry.grid(row=0, column=1, sticky=tk.W, pady=8)
+            username_entry.focus()
+            
+            ttk.Label(fields_frame, text="Full Name:", style="TLabel").grid(row=1, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            fullname_var = tk.StringVar()
+            ttk.Entry(fields_frame, textvariable=fullname_var, width=30, style="Techfix.TEntry").grid(row=1, column=1, sticky=tk.W, pady=8)
+            
+            ttk.Label(fields_frame, text="Password:", style="TLabel").grid(row=2, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            password_var = tk.StringVar()
+            ttk.Entry(fields_frame, textvariable=password_var, show='*', width=30, style="Techfix.TEntry").grid(row=2, column=1, sticky=tk.W, pady=8)
+            
+            ttk.Label(fields_frame, text="Role:", style="TLabel").grid(row=3, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            role_var = tk.StringVar()
+            role_combo = ttk.Combobox(fields_frame, textvariable=role_var, state="readonly", width=27, style="Techfix.TCombobox")
+            role_combo.grid(row=3, column=1, sticky=tk.W, pady=8)
+            
+            # Load roles
+            conn = db.get_connection()
+            try:
+                cur = conn.execute("SELECT name FROM roles ORDER BY name")
+                roles = [row['name'] for row in cur.fetchall()]
+                role_combo['values'] = roles
+                if roles:
+                    role_combo.current(0)
+            finally:
+                conn.close()
+            
+            ttk.Label(fields_frame, text="Active:", style="TLabel").grid(row=4, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            active_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(fields_frame, variable=active_var, style="Techfix.TCheckbutton").grid(row=4, column=1, sticky=tk.W, pady=8)
+            
+            def create_user():
+                username = username_var.get().strip()
+                full_name = fullname_var.get().strip()
+                password = password_var.get()
+                role_name = role_var.get()
+                is_active = 1 if active_var.get() else 0
+                
+                if not username:
+                    messagebox.showerror("Error", "Username is required.", parent=dialog)
+                    return
+                
+                if not password:
+                    messagebox.showerror("Error", "Password is required.", parent=dialog)
+                    return
+                
+                conn = db.get_connection()
+                try:
+                    # Check if username exists
+                    existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+                    if existing:
+                        messagebox.showerror("Error", f"Username '{username}' already exists.", parent=dialog)
+                        return
+                    
+                    # Get role ID
+                    role_row = conn.execute("SELECT id FROM roles WHERE name = ?", (role_name,)).fetchone()
+                    if not role_row:
+                        messagebox.showerror("Error", "Invalid role selected.", parent=dialog)
+                        return
+                    role_id = role_row['id']
+                    
+                    # Get default company
+                    company_row = conn.execute("SELECT id FROM companies WHERE code = 'DEFAULT'").fetchone()
+                    company_id = company_row['id'] if company_row else None
+                    
+                    # Hash password
+                    password_hash = auth.hash_password(password)
+                    
+                    # Create user
+                    conn.execute("""
+                        INSERT INTO users (username, full_name, role_id, company_id, is_active, password_hash)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (username, full_name or None, role_id, company_id, is_active, password_hash))
+                    conn.commit()
+                    
+                    messagebox.showinfo("Success", f"User '{username}' created successfully.", parent=dialog)
+                    dialog.destroy()
+                    refresh_callback()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to create user: {e}", parent=dialog)
+                finally:
+                    conn.close()
+            
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Create",
+                command=create_user,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error creating user dialog: {e}")
+    
+    def _show_edit_user_dialog(self, parent, user_id, refresh_callback):
+        """Show dialog to edit an existing user."""
+        # Security check: Only admins can edit users
+        if not self._is_user_admin():
+            messagebox.showerror("Access Denied", "Admin access required to edit users.")
+            return
+        
+        try:
+            from . import db
+            
+            dialog = tk.Toplevel(parent)
+            dialog.title("Edit User")
+            dialog.transient(parent)
+            dialog.grab_set()
+            dialog.geometry("500x400")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(
+                main_frame,
+                text="Edit User",
+                font=("{Segoe UI Semibold} 18"),
+                style="TLabel"
+            ).pack(pady=(0, 20))
+            
+            # Load user data
+            conn = db.get_connection()
+            try:
+                cur = conn.execute("""
+                    SELECT username, full_name, role_id, is_active
+                    FROM users WHERE id = ?
+                """, (user_id,))
+                user_data = cur.fetchone()
+                
+                if not user_data:
+                    messagebox.showerror("Error", "User not found.", parent=dialog)
+                    dialog.destroy()
+                    return
+            finally:
+                conn.close()
+            
+            # Form fields
+            fields_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            fields_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(fields_frame, text="Username:", style="TLabel").grid(row=0, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            username_var = tk.StringVar(value=user_data['username'])
+            username_entry = ttk.Entry(fields_frame, textvariable=username_var, width=30, style="Techfix.TEntry", state='readonly')
+            username_entry.grid(row=0, column=1, sticky=tk.W, pady=8)
+            
+            ttk.Label(fields_frame, text="Full Name:", style="TLabel").grid(row=1, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            fullname_var = tk.StringVar(value=user_data['full_name'] or '')
+            ttk.Entry(fields_frame, textvariable=fullname_var, width=30, style="Techfix.TEntry").grid(row=1, column=1, sticky=tk.W, pady=8)
+            
+            ttk.Label(fields_frame, text="Role:", style="TLabel").grid(row=2, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            role_var = tk.StringVar()
+            role_combo = ttk.Combobox(fields_frame, textvariable=role_var, state="readonly", width=27, style="Techfix.TCombobox")
+            role_combo.grid(row=2, column=1, sticky=tk.W, pady=8)
+            
+            # Load roles and set current
+            conn = db.get_connection()
+            try:
+                cur = conn.execute("SELECT id, name FROM roles ORDER BY name")
+                roles = []
+                current_role_id = user_data['role_id']
+                current_role_name = None
+                for row in cur.fetchall():
+                    roles.append(row['name'])
+                    if row['id'] == current_role_id:
+                        current_role_name = row['name']
+                role_combo['values'] = roles
+                if current_role_name:
+                    role_var.set(current_role_name)
+            finally:
+                conn.close()
+            
+            ttk.Label(fields_frame, text="Active:", style="TLabel").grid(row=3, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            active_var = tk.BooleanVar(value=bool(user_data['is_active']))
+            ttk.Checkbutton(fields_frame, variable=active_var, style="Techfix.TCheckbutton").grid(row=3, column=1, sticky=tk.W, pady=8)
+            
+            def update_user():
+                full_name = fullname_var.get().strip()
+                role_name = role_var.get()
+                is_active = 1 if active_var.get() else 0
+                
+                conn = db.get_connection()
+                try:
+                    # Get role ID
+                    role_row = conn.execute("SELECT id FROM roles WHERE name = ?", (role_name,)).fetchone()
+                    if not role_row:
+                        messagebox.showerror("Error", "Invalid role selected.", parent=dialog)
+                        return
+                    role_id = role_row['id']
+                    
+                    # Update user
+                    conn.execute("""
+                        UPDATE users 
+                        SET full_name = ?, role_id = ?, is_active = ?
+                        WHERE id = ?
+                    """, (full_name or None, role_id, is_active, user_id))
+                    conn.commit()
+                    
+                    messagebox.showinfo("Success", "User updated successfully.", parent=dialog)
+                    dialog.destroy()
+                    refresh_callback()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to update user: {e}", parent=dialog)
+                finally:
+                    conn.close()
+            
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Update",
+                command=update_user,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error editing user: {e}")
+    
+    def _show_create_role_dialog(self, parent, refresh_callback):
+        """Show dialog to create a new role."""
+        # Security check: Only admins can create roles
+        if not self._is_user_admin():
+            messagebox.showerror("Access Denied", "Admin access required to create roles.")
+            return
+        
+        try:
+            from . import db
+            
+            dialog = tk.Toplevel(parent)
+            dialog.title("Create New Role")
+            dialog.transient(parent)
+            dialog.grab_set()
+            dialog.geometry("500x250")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(
+                main_frame,
+                text="Create New Role",
+                font=("{Segoe UI Semibold} 18"),
+                style="TLabel"
+            ).pack(pady=(0, 20))
+            
+            # Form fields
+            fields_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            fields_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(fields_frame, text="Role Name:", style="TLabel").grid(row=0, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            name_var = tk.StringVar()
+            name_entry = ttk.Entry(fields_frame, textvariable=name_var, width=30, style="Techfix.TEntry")
+            name_entry.grid(row=0, column=1, sticky=tk.W, pady=8)
+            name_entry.focus()
+            
+            ttk.Label(fields_frame, text="Description:", style="TLabel").grid(row=1, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            desc_var = tk.StringVar()
+            desc_entry = ttk.Entry(fields_frame, textvariable=desc_var, width=30, style="Techfix.TEntry")
+            desc_entry.grid(row=1, column=1, sticky=tk.W, pady=8)
+            
+            def create_role():
+                name = name_var.get().strip()
+                description = desc_var.get().strip()
+                
+                if not name:
+                    messagebox.showerror("Error", "Role name is required.", parent=dialog)
+                    return
+                
+                conn = db.get_connection()
+                try:
+                    # Check if role name exists
+                    existing = conn.execute("SELECT id FROM roles WHERE name = ?", (name,)).fetchone()
+                    if existing:
+                        messagebox.showerror("Error", f"Role '{name}' already exists.", parent=dialog)
+                        return
+                    
+                    # Create role
+                    conn.execute("""
+                        INSERT INTO roles (name, description)
+                        VALUES (?, ?)
+                    """, (name, description or None))
+                    conn.commit()
+                    
+                    messagebox.showinfo("Success", f"Role '{name}' created successfully.", parent=dialog)
+                    dialog.destroy()
+                    refresh_callback()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to create role: {e}", parent=dialog)
+                finally:
+                    conn.close()
+            
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Create",
+                command=create_role,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error creating role dialog: {e}")
+    
+    def _show_edit_role_dialog(self, parent, role_id, refresh_callback):
+        """Show dialog to edit an existing role."""
+        # Security check: Only admins can edit roles
+        if not self._is_user_admin():
+            messagebox.showerror("Access Denied", "Admin access required to edit roles.")
+            return
+        
+        try:
+            from . import db
+            
+            dialog = tk.Toplevel(parent)
+            dialog.title("Edit Role")
+            dialog.transient(parent)
+            dialog.grab_set()
+            dialog.geometry("500x250")
+            dialog.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+            
+            main_frame = ttk.Frame(dialog, style="Techfix.Surface.TFrame", padding=24)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(
+                main_frame,
+                text="Edit Role",
+                font=("{Segoe UI Semibold} 18"),
+                style="TLabel"
+            ).pack(pady=(0, 20))
+            
+            # Load role data
+            conn = db.get_connection()
+            try:
+                cur = conn.execute("""
+                    SELECT name, description
+                    FROM roles WHERE id = ?
+                """, (role_id,))
+                role_data = cur.fetchone()
+                
+                if not role_data:
+                    messagebox.showerror("Error", "Role not found.", parent=dialog)
+                    dialog.destroy()
+                    return
+            finally:
+                conn.close()
+            
+            # Form fields
+            fields_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            fields_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(fields_frame, text="Role Name:", style="TLabel").grid(row=0, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            name_var = tk.StringVar(value=role_data['name'])
+            name_entry = ttk.Entry(fields_frame, textvariable=name_var, width=30, style="Techfix.TEntry", state='readonly')
+            name_entry.grid(row=0, column=1, sticky=tk.W, pady=8)
+            
+            ttk.Label(fields_frame, text="Description:", style="TLabel").grid(row=1, column=0, sticky=tk.W, pady=8, padx=(0, 12))
+            desc_var = tk.StringVar(value=role_data['description'] or '')
+            desc_entry = ttk.Entry(fields_frame, textvariable=desc_var, width=30, style="Techfix.TEntry")
+            desc_entry.grid(row=1, column=1, sticky=tk.W, pady=8)
+            desc_entry.focus()
+            
+            def update_role():
+                description = desc_var.get().strip()
+                
+                conn = db.get_connection()
+                try:
+                    # Update role
+                    conn.execute("""
+                        UPDATE roles 
+                        SET description = ?
+                        WHERE id = ?
+                    """, (description or None, role_id))
+                    conn.commit()
+                    
+                    messagebox.showinfo("Success", "Role updated successfully.", parent=dialog)
+                    dialog.destroy()
+                    refresh_callback()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to update role: {e}", parent=dialog)
+                finally:
+                    conn.close()
+            
+            btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
+            btn_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Update",
+                command=update_role,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                style="Techfix.TButton"
+            ).pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error editing role: {e}")
+    
+    def _show_user_menu(self) -> None:
+        """Show enhanced user menu popup with options."""
+        if not self.auth_module or not self.current_user:
+            # User is not logged in - show login option
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label="Login", command=lambda: self._show_login() and self._load_all_views())
+            try:
+                menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+            except Exception:
+                pass
+            return
+        
+        # Create custom popup window for logged-in users
+        popup = tk.Toplevel(self)
+        popup.overrideredirect(True)  # Remove window decorations
+        popup.attributes('-topmost', True)
+        
+        # Get user information
+        username = self.current_user.get('username', 'User')
+        full_name = self.current_user.get('full_name')
+        role_name = self.current_user.get('role_name', 'User')
+        
+        # Get theme colors
+        surface_bg = self.palette.get("surface_bg", "#ffffff")
+        accent_color = self.palette.get("accent_color", "#2563eb")
+        text_primary = self.palette.get("text_primary", "#1f2937")
+        text_secondary = self.palette.get("text_secondary", "#4b5563")
+        hover_bg = "#f3f4f6"
+        
+        # Main container with shadow effect
+        container = tk.Frame(popup, bg="#e5e7eb", relief=tk.FLAT, bd=0)
+        container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Inner frame with white background
+        inner_frame = tk.Frame(container, bg=surface_bg, relief=tk.FLAT, bd=0)
+        inner_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # User info section
+        user_info_frame = tk.Frame(inner_frame, bg=accent_color)
+        user_info_frame.pack(fill=tk.X)
+        
+        user_content = tk.Frame(user_info_frame, bg=accent_color)
+        user_content.pack(fill=tk.X, padx=16, pady=14)
+        
+        # User icon and name
+        user_icon = tk.Label(
+            user_content,
+            text="👤",
+            bg=accent_color,
+            fg="#ffffff",
+            font=("{Segoe UI} 20")
+        )
+        user_icon.pack(side=tk.LEFT, padx=(0, 12))
+        
+        name_frame = tk.Frame(user_content, bg=accent_color)
+        name_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        username_label = tk.Label(
+            name_frame,
+            text=full_name if full_name else username,
+            bg=accent_color,
+            fg="#ffffff",
+            font=("{Segoe UI Semibold} 13"),
+            anchor="w"
+        )
+        username_label.pack(fill=tk.X)
+        
+        role_label = tk.Label(
+            name_frame,
+            text=f"@{username} • {role_name}",
+            bg=accent_color,
+            fg="#dbeafe",
+            font=("{Segoe UI} 10"),
+            anchor="w"
+        )
+        role_label.pack(fill=tk.X, pady=(2, 0))
+        
+        # Separator
+        sep1 = tk.Frame(inner_frame, bg="#e5e7eb", height=1)
+        sep1.pack(fill=tk.X)
+        
+        # Menu items container
+        menu_frame = tk.Frame(inner_frame, bg=surface_bg)
+        menu_frame.pack(fill=tk.X, padx=4, pady=4)
+        
+        # Change Password button
+        def create_menu_item(parent, icon, text, command=None):
+            item_frame = tk.Frame(parent, bg=surface_bg, cursor="hand2")
+            item_frame.pack(fill=tk.X, pady=2)
+            
+            def on_enter(e):
+                item_frame.configure(bg=hover_bg)
+                icon_label.configure(bg=hover_bg)
+                text_label.configure(bg=hover_bg)
+            
+            def on_leave(e):
+                item_frame.configure(bg=surface_bg)
+                icon_label.configure(bg=surface_bg)
+                text_label.configure(bg=surface_bg)
+            
+            def on_click(e):
+                if command:
+                    popup.destroy()
+                    command()
+            
+            item_frame.bind('<Enter>', on_enter)
+            item_frame.bind('<Leave>', on_leave)
+            item_frame.bind('<Button-1>', on_click)
+            
+            icon_label = tk.Label(
+                item_frame,
+                text=icon,
+                bg=surface_bg,
+                fg=text_secondary,
+                font=("{Segoe UI} 14"),
+                width=3,
+                anchor="w"
+            )
+            icon_label.pack(side=tk.LEFT, padx=(12, 8), pady=10)
+            icon_label.bind('<Enter>', on_enter)
+            icon_label.bind('<Leave>', on_leave)
+            icon_label.bind('<Button-1>', on_click)
+            
+            text_label = tk.Label(
+                item_frame,
+                text=text,
+                bg=surface_bg,
+                fg=text_primary,
+                font=("{Segoe UI} 11"),
+                anchor="w"
+            )
+            text_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=10)
+            text_label.bind('<Enter>', on_enter)
+            text_label.bind('<Leave>', on_leave)
+            text_label.bind('<Button-1>', on_click)
+            
+            return item_frame
+        
+        # Add menu items
+        create_menu_item(menu_frame, "🔑", "Change Password...", self._show_change_password)
+        
+        # Add Admin Panel option for admin users
+        if self._is_user_admin():
+            create_menu_item(menu_frame, "⚙️", "Admin Panel...", self._show_admin_panel)
+        
+        # Separator
+        sep2 = tk.Frame(inner_frame, bg="#e5e7eb", height=1)
+        sep2.pack(fill=tk.X, pady=(4, 0))
+        
+        # Logout button
+        logout_frame = tk.Frame(inner_frame, bg=surface_bg, cursor="hand2")
+        logout_frame.pack(fill=tk.X, padx=4, pady=(4, 4))
+        
+        def on_logout_enter(e):
+            logout_frame.configure(bg="#fef2f2")
+            logout_icon.configure(bg="#fef2f2", fg="#dc2626")
+            logout_text.configure(bg="#fef2f2", fg="#dc2626")
+        
+        def on_logout_leave(e):
+            logout_frame.configure(bg=surface_bg)
+            logout_icon.configure(bg=surface_bg, fg="#dc2626")
+            logout_text.configure(bg=surface_bg, fg="#dc2626")
+        
+        def on_logout_click(e):
+            popup.destroy()
+            self._logout()
+        
+        logout_frame.bind('<Enter>', on_logout_enter)
+        logout_frame.bind('<Leave>', on_logout_leave)
+        logout_frame.bind('<Button-1>', on_logout_click)
+        
+        logout_icon = tk.Label(
+            logout_frame,
+            text="🚪",
+            bg=surface_bg,
+            fg="#dc2626",
+            font=("{Segoe UI} 14"),
+            width=3,
+            anchor="w"
+        )
+        logout_icon.pack(side=tk.LEFT, padx=(12, 8), pady=10)
+        logout_icon.bind('<Enter>', on_logout_enter)
+        logout_icon.bind('<Leave>', on_logout_leave)
+        logout_icon.bind('<Button-1>', on_logout_click)
+        
+        logout_text = tk.Label(
+            logout_frame,
+            text="Logout",
+            bg=surface_bg,
+            fg="#dc2626",
+            font=("{Segoe UI Semibold} 11"),
+            anchor="w"
+        )
+        logout_text.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=10)
+        logout_text.bind('<Enter>', on_logout_enter)
+        logout_text.bind('<Leave>', on_logout_leave)
+        logout_text.bind('<Button-1>', on_logout_click)
+        
+        # Calculate position near the user button
+        popup.update_idletasks()
+        width = 280
+        height = popup.winfo_reqheight()
+        
+        try:
+            # Get button position
+            btn_x = self.user_menu_btn.winfo_rootx()
+            btn_y = self.user_menu_btn.winfo_rooty()
+            btn_height = self.user_menu_btn.winfo_height()
+            
+            # Position popup below the button, aligned to the right
+            x = btn_x + self.user_menu_btn.winfo_width() - width
+            y = btn_y + btn_height + 4
+            
+            # Ensure popup stays on screen
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            
+            if x + width > screen_width:
+                x = screen_width - width - 10
+            if x < 0:
+                x = 10
+            if y + height > screen_height:
+                y = btn_y - height - 4
+            
+            popup.geometry(f"{width}x{height}+{x}+{y}")
+        except Exception:
+            # Fallback to cursor position
+            popup.geometry(f"{width}x{height}+{self.winfo_pointerx()}+{self.winfo_pointery()}")
+        
+        # Close popup function
+        def close_popup():
+            try:
+                if popup.winfo_exists():
+                    try:
+                        popup.grab_release()
+                    except:
+                        pass
+                    popup.destroy()
+            except:
+                pass
+        
+        def on_escape(e):
+            close_popup()
+        
+        popup.bind('<Escape>', on_escape)
+        
+        # Update to show popup
+        popup.update_idletasks()
+        popup.focus_set()
+        
+        # Use grab_set to capture all events - clicking outside will close popup
+        try:
+            popup.grab_set()
+            # Release grab when popup is destroyed
+            popup.bind('<Destroy>', lambda e: popup.grab_release() if popup.winfo_exists() else None)
+        except:
+            pass
+    
+    def _show_change_password(self) -> None:
+        """Show change password dialog."""
+        if not self.auth_module or not self.current_user:
+            return
+        
+        dialog = tk.Toplevel(self)
+        dialog.title("Change Password - TechFix Solutions")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        
+        # Get theme colors
+        bg_color = self.palette.get("app_bg", "#f5f7fb")
+        surface_bg = self.palette.get("surface_bg", "#ffffff")
+        accent_color = self.palette.get("accent_color", "#2563eb")
+        accent_hover = self.palette.get("accent_hover", "#1d4ed8")
+        text_primary = self.palette.get("text_primary", "#1f2937")
+        text_secondary = self.palette.get("text_secondary", "#4b5563")
+        entry_border = self.palette.get("entry_border", "#d8dee9")
+        
+        dialog.configure(bg=bg_color)
+        
+        # Set initial size - increased to ensure all content is visible
+        width, height = 480, 750
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.minsize(width, height)
+        dialog.maxsize(width, height)
+        
+        # Main container with padding
+        container = tk.Frame(dialog, bg=bg_color)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Card-style panel
+        card_frame = tk.Frame(container, bg=surface_bg, relief=tk.FLAT, bd=0)
+        card_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Inner padding for card content - reduced vertical padding
+        content_frame = tk.Frame(card_frame, bg=surface_bg)
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=25)
+        
+        # Use grid for better control
+        content_frame.grid_rowconfigure(0, weight=0)  # Header - no expand
+        content_frame.grid_rowconfigure(1, weight=0)  # Form - no expand  
+        content_frame.grid_rowconfigure(2, weight=1)  # Spacer - expands
+        content_frame.grid_rowconfigure(3, weight=0)  # Buttons - no expand, always at bottom
+        
+        # Header section - reduced spacing
+        header_frame = tk.Frame(content_frame, bg=surface_bg)
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        
+        # Icon - smaller
+        icon_label = tk.Label(
+            header_frame,
+            text="🔑",
+            font=("{Segoe UI} 40"),
+            bg=surface_bg,
+            fg=accent_color
+        )
+        icon_label.pack(pady=(0, 10))
+        
+        # Title
+        title_label = tk.Label(
+            header_frame,
+            text="Change Password",
+            font=("{Segoe UI Semibold} 22"),
+            bg=surface_bg,
+            fg=text_primary
+        )
+        title_label.pack(pady=(0, 5))
+        
+        subtitle = tk.Label(
+            header_frame,
+            text="Update your account password",
+            bg=surface_bg,
+            fg=text_secondary,
+            font=("{Segoe UI} 10")
+        )
+        subtitle.pack()
+        
+        # Form section - don't expand, just take needed space
+        form_frame = tk.Frame(content_frame, bg=surface_bg)
+        form_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        
+        # Old Password field
+        old_pwd_frame = tk.Frame(form_frame, bg=surface_bg)
+        old_pwd_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        old_pwd_label = tk.Label(
+            old_pwd_frame,
+            text="Old Password",
+            bg=surface_bg,
+            fg=text_primary,
+            font=("{Segoe UI Semibold} 11")
+        )
+        old_pwd_label.pack(anchor=tk.W, pady=(0, 10))
+        
+        old_pwd_var = tk.StringVar()
+        old_pwd_entry_frame = tk.Frame(old_pwd_frame, bg=entry_border, bd=1, relief=tk.SOLID)
+        old_pwd_entry_frame.pack(fill=tk.X)
+        
+        old_pwd_inner = tk.Frame(old_pwd_entry_frame, bg=surface_bg)
+        old_pwd_inner.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
+        
+        old_pwd_icon = tk.Label(
+            old_pwd_inner,
+            text="🔒",
+            bg=surface_bg,
+            fg=text_secondary,
+            font=("{Segoe UI} 14")
+        )
+        old_pwd_icon.pack(side=tk.LEFT, padx=(0, 10))
+        
+        old_pwd_entry = tk.Entry(
+            old_pwd_inner,
+            textvariable=old_pwd_var,
+            font=("{Segoe UI} 12"),
+            relief=tk.FLAT,
+            bd=0,
+            bg=surface_bg,
+            fg=text_primary,
+            show="*",
+            insertbackground=accent_color,
+            highlightthickness=0
+        )
+        old_pwd_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        old_pwd_entry.focus()
+        
+        def on_old_pwd_focus_in(e):
+            old_pwd_entry_frame.configure(bg=accent_color, bd=2)
+            old_pwd_icon.config(fg=accent_color)
+        
+        def on_old_pwd_focus_out(e):
+            old_pwd_entry_frame.configure(bg=entry_border, bd=1)
+            old_pwd_icon.config(fg=text_secondary)
+        
+        old_pwd_entry.bind('<FocusIn>', on_old_pwd_focus_in)
+        old_pwd_entry.bind('<FocusOut>', on_old_pwd_focus_out)
+        
+        # New Password field
+        new_pwd_frame = tk.Frame(form_frame, bg=surface_bg)
+        new_pwd_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        new_pwd_label = tk.Label(
+            new_pwd_frame,
+            text="New Password",
+            bg=surface_bg,
+            fg=text_primary,
+            font=("{Segoe UI Semibold} 11")
+        )
+        new_pwd_label.pack(anchor=tk.W, pady=(0, 10))
+        
+        new_pwd_var = tk.StringVar()
+        new_pwd_entry_frame = tk.Frame(new_pwd_frame, bg=entry_border, bd=1, relief=tk.SOLID)
+        new_pwd_entry_frame.pack(fill=tk.X)
+        
+        new_pwd_inner = tk.Frame(new_pwd_entry_frame, bg=surface_bg)
+        new_pwd_inner.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
+        
+        new_pwd_icon = tk.Label(
+            new_pwd_inner,
+            text="🔒",
+            bg=surface_bg,
+            fg=text_secondary,
+            font=("{Segoe UI} 14")
+        )
+        new_pwd_icon.pack(side=tk.LEFT, padx=(0, 10))
+        
+        new_pwd_entry = tk.Entry(
+            new_pwd_inner,
+            textvariable=new_pwd_var,
+            font=("{Segoe UI} 12"),
+            relief=tk.FLAT,
+            bd=0,
+            bg=surface_bg,
+            fg=text_primary,
+            show="*",
+            insertbackground=accent_color,
+            highlightthickness=0
+        )
+        new_pwd_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        def on_new_pwd_focus_in(e):
+            new_pwd_entry_frame.configure(bg=accent_color, bd=2)
+            new_pwd_icon.config(fg=accent_color)
+        
+        def on_new_pwd_focus_out(e):
+            new_pwd_entry_frame.configure(bg=entry_border, bd=1)
+            new_pwd_icon.config(fg=text_secondary)
+        
+        new_pwd_entry.bind('<FocusIn>', on_new_pwd_focus_in)
+        new_pwd_entry.bind('<FocusOut>', on_new_pwd_focus_out)
+        
+        # Confirm Password field
+        confirm_pwd_frame = tk.Frame(form_frame, bg=surface_bg)
+        confirm_pwd_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        confirm_pwd_label = tk.Label(
+            confirm_pwd_frame,
+            text="Confirm New Password",
+            bg=surface_bg,
+            fg=text_primary,
+            font=("{Segoe UI Semibold} 11")
+        )
+        confirm_pwd_label.pack(anchor=tk.W, pady=(0, 10))
+        
+        confirm_pwd_var = tk.StringVar()
+        confirm_pwd_entry_frame = tk.Frame(confirm_pwd_frame, bg=entry_border, bd=1, relief=tk.SOLID)
+        confirm_pwd_entry_frame.pack(fill=tk.X)
+        
+        confirm_pwd_inner = tk.Frame(confirm_pwd_entry_frame, bg=surface_bg)
+        confirm_pwd_inner.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
+        
+        confirm_pwd_icon = tk.Label(
+            confirm_pwd_inner,
+            text="🔒",
+            bg=surface_bg,
+            fg=text_secondary,
+            font=("{Segoe UI} 14")
+        )
+        confirm_pwd_icon.pack(side=tk.LEFT, padx=(0, 10))
+        
+        confirm_pwd_entry = tk.Entry(
+            confirm_pwd_inner,
+            textvariable=confirm_pwd_var,
+            font=("{Segoe UI} 12"),
+            relief=tk.FLAT,
+            bd=0,
+            bg=surface_bg,
+            fg=text_primary,
+            show="*",
+            insertbackground=accent_color,
+            highlightthickness=0
+        )
+        confirm_pwd_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        def on_confirm_pwd_focus_in(e):
+            confirm_pwd_entry_frame.configure(bg=accent_color, bd=2)
+            confirm_pwd_icon.config(fg=accent_color)
+        
+        def on_confirm_pwd_focus_out(e):
+            confirm_pwd_entry_frame.configure(bg=entry_border, bd=1)
+            confirm_pwd_icon.config(fg=text_secondary)
+        
+        confirm_pwd_entry.bind('<FocusIn>', on_confirm_pwd_focus_in)
+        confirm_pwd_entry.bind('<FocusOut>', on_confirm_pwd_focus_out)
+        
+        # Error message label
+        error_frame = tk.Frame(form_frame, bg=surface_bg, height=35)
+        error_frame.pack(fill=tk.X, pady=(0, 8))
+        error_frame.pack_propagate(False)
+        
+        error_label = tk.Label(
+            error_frame,
+            text="",
+            bg=surface_bg,
+            fg="#ef4444",
+            font=("{Segoe UI} 10"),
+            wraplength=350,
+            justify=tk.LEFT,
+            anchor="nw"
+        )
+        error_label.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        def show_error(message: str):
+            error_label.config(text=message)
+        
+        def hide_error():
+            error_label.config(text="")
+        
+        # Spacer to push buttons to bottom
+        spacer = tk.Frame(content_frame, bg=surface_bg, height=1)
+        spacer.grid(row=2, column=0, sticky="nsew")
+        
+        # Buttons frame - ensure it's always visible with proper spacing
+        btn_frame = tk.Frame(content_frame, bg=surface_bg)
+        btn_frame.grid(row=3, column=0, sticky="ew", pady=(15, 10))
+        
+        # Configure column
+        content_frame.grid_columnconfigure(0, weight=1)
+        btn_frame.grid_columnconfigure(0, weight=1)
+        btn_frame.grid_columnconfigure(1, weight=1)
+        
+        def do_change():
+            hide_error()
+            
+            old_pwd = old_pwd_var.get().strip()
+            new_pwd = new_pwd_var.get().strip()
+            confirm_pwd = confirm_pwd_var.get().strip()
+            
+            if not old_pwd:
+                show_error("Please enter your old password")
+                old_pwd_entry.focus()
+                return
+            
+            if not new_pwd:
+                show_error("Please enter a new password")
+                new_pwd_entry.focus()
+                return
+            
+            if len(new_pwd) < 6:
+                show_error("New password must be at least 6 characters long")
+                new_pwd_entry.focus()
+                return
+            
+            if new_pwd != confirm_pwd:
+                show_error("New passwords do not match")
+                confirm_pwd_entry.focus()
+                return
+            
+            if self.auth_module.change_password(self.current_user['id'], old_pwd, new_pwd):
+                messagebox.showinfo("Success", "Password changed successfully", parent=dialog)
+                dialog.destroy()
+            else:
+                show_error("Password change failed. Please check your old password.")
+                old_pwd_entry.focus()
+                old_pwd_entry.select_range(0, tk.END)
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        # Cancel button
+        cancel_btn = tk.Button(
+            btn_frame,
+            text="Cancel",
+            command=on_cancel,
+            bg="#6b7280",
+            fg="white",
+            padx=35,
+            pady=14,
+            font=("{Segoe UI Semibold} 11"),
+            cursor="hand2",
+            relief=tk.FLAT,
+            bd=0,
+            activebackground="#4b5563",
+            activeforeground="white",
+            width=12
+        )
+        cancel_btn.grid(row=0, column=0, padx=(0, 12), sticky="w")
+        
+        # Change Password button
+        change_btn = tk.Button(
+            btn_frame,
+            text="Change Password",
+            command=do_change,
+            bg=accent_color,
+            fg="white",
+            padx=35,
+            pady=14,
+            font=("{Segoe UI Semibold} 11"),
+            cursor="hand2",
+            relief=tk.FLAT,
+            bd=0,
+            activebackground=accent_hover,
+            activeforeground="white"
+        )
+        change_btn.grid(row=0, column=1, sticky="ew")
+        
+        def on_change_enter(e):
+            change_btn.config(bg=accent_hover)
+        
+        def on_change_leave(e):
+            change_btn.config(bg=accent_color)
+        
+        change_btn.bind('<Enter>', on_change_enter)
+        change_btn.bind('<Leave>', on_change_leave)
+        
+        # Bind Enter key
+        old_pwd_entry.bind('<Return>', lambda e: new_pwd_entry.focus())
+        new_pwd_entry.bind('<Return>', lambda e: confirm_pwd_entry.focus())
+        confirm_pwd_entry.bind('<Return>', lambda e: do_change())
+        
+        # Handle window close
+        dialog.protocol('WM_DELETE_WINDOW', on_cancel)
+        
+        # Force update to ensure all widgets are rendered
+        dialog.update_idletasks()
+        dialog.update()
+        
+        # Ensure minimum height for all content to be visible
+        dialog.minsize(480, 750)
+        dialog.maxsize(480, 750)
+        
+        # Final update and focus
+        dialog.update_idletasks()
+        dialog.focus_force()
+        dialog.lift()
+    
+    def _logout(self) -> None:
+        """Logout current user."""
+        if self.auth_module and self.session_token:
+            self.auth_module.invalidate_session(self.session_token)
+        self.current_user = None
+        self.session_token = None
+        if self._show_login():
+            self._load_all_views()
+        else:
+            self.destroy()
+    
+    def _show_shortcuts_help(self) -> None:
+        """Show keyboard shortcuts help."""
+        shortcuts = """
+Keyboard Shortcuts:
+
+Navigation:
+  Ctrl+1-0    Navigate to tabs
+  F11          Toggle fullscreen
+  Escape       Exit fullscreen
+
+Actions:
+  Ctrl+N       New Transaction
+  Ctrl+S       Save
+  Ctrl+F       Search
+  Ctrl+I       Import Data
+  Ctrl+D       Dashboard
+  Ctrl+Z       Undo
+  Ctrl+Y       Redo
+  Ctrl+Q       Quit
+
+Help:
+  F1           Context Help
+        """
+        messagebox.showinfo("Keyboard Shortcuts", shortcuts.strip())
+    
+    def _show_context_help(self) -> None:
+        """Show context-sensitive help."""
+        messagebox.showinfo("Help", "Press F1 for help\nSee 'How to Use?' tab for detailed documentation")
+    
+    def _save_current(self) -> None:
+        """Save current form (if applicable)."""
+        # This would save the current transaction form if open
+        self.set_status("Save functionality", "info")
+    
     def _on_window_resize(self, event=None):
         try:
             if hasattr(self, '_resize_after_id') and self._resize_after_id:
@@ -1215,7 +5709,11 @@ class TechFixApp(tk.Tk):
                     self.attributes('-fullscreen', full)
                 if isinstance(theme, str) and theme in THEMES:
                     self.theme_name = theme
-                    self.palette = THEMES[theme]
+                    self.palette = THEMES[theme].copy()  # Use copy to avoid modifying original
+                    # Load custom colors if available
+                    custom_colors = self._load_custom_colors()
+                    if custom_colors:
+                        self.palette.update(custom_colors)
         except Exception:
             pass
 
@@ -1349,10 +5847,107 @@ class TechFixApp(tk.Tk):
         except Exception:
             pass
 
-    def set_status(self, text: str) -> None:
+    def set_status(self, text: str, status_type: str = "info") -> None:
+        """Set status message with optional status badge."""
         try:
             if hasattr(self, 'status_var'):
                 self.status_var.set(str(text))
+            
+            # Update header status area with badge if available
+            if hasattr(self, 'header_status_area'):
+                try:
+                    # Clear existing badges
+                    for widget in self.header_status_area.winfo_children():
+                        widget.destroy()
+                    
+                    # Create new status badge
+                    if text:
+                        badge = self._create_status_badge(
+                            self.header_status_area,
+                            text,
+                            status=status_type,
+                            pulse=(status_type == "warning" or status_type == "error")
+                        )
+                        badge.pack(side=tk.RIGHT, padx=4)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    
+    def show_loading(self, message: str = "Please wait...", parent=None):
+        """Show a loading spinner with message."""
+        import time
+        try:
+            if parent is None:
+                parent = self
+            
+            # Create loading overlay
+            loading_frame = self._create_glassmorphism_overlay(parent)
+            loading_frame.place(x=0, y=0, relwidth=1, relheight=1)
+            loading_frame.lift()
+            
+            # Create loading content with rounded corners effect
+            content_frame = tk.Frame(
+                loading_frame, 
+                bg=self.palette.get('surface_bg', '#ffffff'),
+                relief=tk.FLAT,
+                bd=0
+            )
+            content_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            
+            # Add padding frame for better visual appearance
+            padding_frame = tk.Frame(content_frame, bg=self.palette.get('surface_bg', '#ffffff'))
+            padding_frame.pack(padx=30, pady=30)
+            
+            # Create animated spinner
+            spinner = self._create_loading_spinner(padding_frame, size=50)
+            spinner.pack(pady=(0, 15))
+            
+            # Loading message label
+            label = tk.Label(
+                padding_frame,
+                text=message,
+                bg=self.palette.get('surface_bg', '#ffffff'),
+                fg=self.palette.get('text_primary', '#1f2937'),
+                font=("{Segoe UI} 12")
+            )
+            label.pack()
+            
+            # Store timestamp when loading was shown (minimum 2 seconds display)
+            loading_frame._loading_active = True
+            loading_frame._content_frame = content_frame
+            loading_frame._show_time = time.time()
+            return loading_frame
+        except Exception:
+            return None
+    
+    def hide_loading(self, loading_frame):
+        """Hide loading spinner after ensuring minimum 2 second display time."""
+        import time
+        try:
+            if loading_frame and hasattr(loading_frame, '_loading_active'):
+                # Calculate elapsed time since loading was shown
+                if hasattr(loading_frame, '_show_time'):
+                    elapsed = time.time() - loading_frame._show_time
+                    min_display_time = 2.0  # Minimum 2 seconds
+                    
+                    if elapsed < min_display_time:
+                        # Schedule hide after remaining time
+                        remaining = min_display_time - elapsed
+                        loading_frame.after(int(remaining * 1000), lambda: self._actually_hide_loading(loading_frame))
+                        return
+                
+                # If enough time has passed, hide immediately
+                self._actually_hide_loading(loading_frame)
+        except Exception:
+            pass
+    
+    def _actually_hide_loading(self, loading_frame):
+        """Actually hide and destroy the loading frame."""
+        try:
+            if loading_frame and hasattr(loading_frame, '_loading_active'):
+                loading_frame.place_forget()
+                loading_frame.destroy()
         except Exception:
             pass
 
@@ -1666,7 +6261,10 @@ class TechFixApp(tk.Tk):
             print(f"Error loading cycle status: {e}")
 
     def _refresh_cycle_and_views(self) -> None:
+        """Refresh cycle and all views with loading indicator."""
+        loading = self.show_loading("Please wait... Refreshing data...")
         try:
+            self.update()  # Update UI to show loading indicator
             self.engine.refresh_current_period()
         except Exception:
             pass
@@ -1678,6 +6276,9 @@ class TechFixApp(tk.Tk):
             self._load_all_views()
         except Exception:
             pass
+        finally:
+            if loading:
+                self.hide_loading(loading)
 
     def _load_15_entries_example(self) -> None:
         """Load 15 example entries for testing purposes."""
@@ -1941,6 +6542,40 @@ class TechFixApp(tk.Tk):
     def _render_cycle_list(self, rows: List[sqlite3.Row]) -> None:
         return
 
+    def _show_login(self) -> bool:
+        """Show login dialog. Returns True if login successful."""
+        # This method is kept for backward compatibility but now uses the standalone login dialog
+        if not self.auth_module:
+            return True  # No auth required
+        
+        # Check if main window is visible (re-login scenario)
+        window_was_visible = self.winfo_viewable()
+        
+        # Hide main window during login
+        if window_was_visible:
+            self.withdraw()
+        
+        try:
+            from . import login_dialog
+            login_result = login_dialog.show_login_dialog(self.auth_module, self.palette, parent=self)
+            if login_result:
+                self.current_user = login_result.get("user")
+                self.session_token = login_result.get("session_token")
+                # Show main window again if it was visible before
+                if window_was_visible:
+                    self.deiconify()
+                return True
+            # Login cancelled - show window again if it was visible
+            if window_was_visible:
+                self.deiconify()
+            return False
+        except Exception as e:
+            logger.error(f"Login dialog error: {e}", exc_info=True)
+            # Show window again if it was visible
+            if window_was_visible:
+                self.deiconify()
+            return False
+    
     def _build_ui(self) -> None:
         # Main container with responsive layout
         self.main_frame = ttk.Frame(self, style="Techfix.App.TFrame")
@@ -1970,12 +6605,121 @@ class TechFixApp(tk.Tk):
         right_wrap = ttk.Frame(container, style="Techfix.App.TFrame")
         right_wrap.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 12), pady=12)
 
-        # Header goes in right content area
-        header = tk.Frame(right_wrap, bg=self.palette["accent_color"]) 
-        header.pack(fill=tk.X, padx=0, pady=(0, 8))
+        # Header goes in right content area with gradient effect
+        header_container = tk.Frame(right_wrap, bg=self.palette["app_bg"])
+        header_container.pack(fill=tk.X, padx=0, pady=(0, 8))
+        
+        # Create gradient header
+        header = tk.Frame(header_container, bg=self.palette["accent_color"], height=60)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)  # Prevent frame from shrinking
         self.header_frame = header
-        tk.Label(header, text="TechFix Solutions", bg=self.palette["accent_color"], fg="#ffffff", font="{Segoe UI Semibold} 14").pack(side=tk.LEFT, padx=18, pady=12)
-        tk.Label(header, text="Integrated accounting workspace", bg=self.palette["accent_color"], fg=self.palette.get("subtitle_fg", "#dbeafe"), font=FONT_BASE).pack(side=tk.LEFT, padx=12, pady=12)
+        
+        # Header left side: Title and subtitle (create first, before gradient)
+        header_left = tk.Frame(header, bg=self.palette["accent_color"])
+        header_left.pack(side=tk.LEFT, padx=18, pady=12)
+        header_left.lift()  # Ensure it's on top
+        
+        title_label = tk.Label(
+            header_left,
+            text="TechFix Solutions",
+            bg=self.palette["accent_color"],
+            fg="#ffffff",
+            font="{Segoe UI Semibold} 16"
+        )
+        title_label.pack(side=tk.LEFT, padx=(0, 12))
+        title_label.lift()
+        
+        subtitle_label = tk.Label(
+            header_left,
+            text="Integrated accounting workspace",
+            bg=self.palette["accent_color"],
+            fg=self.palette.get("subtitle_fg", "#dbeafe"),
+            font=FONT_BASE
+        )
+        subtitle_label.pack(side=tk.LEFT)
+        subtitle_label.lift()
+        
+        # Header right side: Search, Notifications, User menu, Status
+        header_right = tk.Frame(header, bg=self.palette["accent_color"])
+        header_right.pack(side=tk.RIGHT, padx=18, pady=12)
+        header_right.lift()  # Ensure it's on top
+        
+        # When packing to RIGHT, pack in reverse order (rightmost first)
+        # Status indicator area (rightmost)
+        status_area = tk.Frame(header_right, bg=self.palette["accent_color"])
+        status_area.pack(side=tk.RIGHT, padx=(12, 0))
+        self.header_status_area = status_area
+        
+        # User menu button (second from right)
+        username = "User"
+        is_admin = False
+        if self.auth_module and self.current_user:
+            username = self.current_user.get('username', 'User')
+            # Verify admin status from database for security
+            is_admin = self._is_user_admin()
+        
+        # Button text: show "admin" for admin users, otherwise show username
+        btn_text = "👤 admin" if is_admin else f"👤 {username}"
+        # Always show user menu (which includes admin panel option for admins)
+        btn_command = self._show_user_menu
+        
+        self.user_menu_btn = tk.Button(
+            header_right,
+            text=btn_text,
+            command=btn_command,
+            bg="#ffffff",
+            fg=self.palette["accent_color"],
+            relief=tk.RAISED,
+            font="{Segoe UI Semibold} 10",
+            cursor="hand2",
+            padx=12,
+            pady=6,
+            bd=1
+        )
+        self.user_menu_btn.pack(side=tk.RIGHT, padx=(0, 8))
+        
+        # Notifications button (third from right)
+        self.notif_btn = tk.Button(
+            header_right,
+            text="🔔 Notifications",
+            command=self._show_notifications,
+            bg="#ffffff",
+            fg=self.palette["accent_color"],
+            relief=tk.RAISED,
+            font="{Segoe UI Semibold} 10",
+            cursor="hand2",
+            padx=12,
+            pady=6,
+            bd=1
+        )
+        self.notif_btn.pack(side=tk.RIGHT, padx=(0, 8))
+        
+        # Search icon button (opens search dialog)
+        search_btn = tk.Button(
+            header_right,
+            text=ICONS.get("search", "🔍"),
+            command=self._show_search_dialog,
+            bg="#ffffff",
+            fg=self.palette["accent_color"],
+            relief=tk.RAISED,
+            font="{Segoe UI Semibold} 12",
+            cursor="hand2",
+            padx=12,
+            pady=6,
+            bd=1
+        )
+        search_btn.pack(side=tk.RIGHT, padx=(0, 8))
+        
+        # Force update to ensure widgets are rendered
+        header.update_idletasks()
+        
+        # Store references for later use
+        self.header_left_frame = header_left
+        self.header_right_frame = header_right
+        
+        # Note: Gradient canvas temporarily disabled to ensure widgets are visible
+        # The solid background color is sufficient for now
 
         toolbar = ttk.Frame(right_wrap, style="Techfix.App.TFrame")
         toolbar.pack(fill=tk.X, padx=12, pady=(0, 12))
@@ -1993,19 +6737,31 @@ class TechFixApp(tk.Tk):
         self.period_combo.pack(side=tk.LEFT, padx=(0, 12))
         self.period_combo.bind("<<ComboboxSelected>>", self._on_period_change)
 
-        ttk.Button(
+        new_period_btn = ttk.Button(
             toolbar,
-            text="New Period",
+            text=f"{ICONS.get('add', '+')} New Period",
             command=self._prompt_new_period,
-            style="Techfix.TButton",
-        ).pack(side=tk.LEFT, padx=(0, 12))
+            style="Techfix.Enhanced.TButton",
+        )
+        new_period_btn.pack(side=tk.LEFT, padx=(0, 12))
+        # Add hover animation
+        try:
+            self._add_hover_animation(new_period_btn)
+        except Exception:
+            pass
 
-        ttk.Button(
+        refresh_btn = ttk.Button(
             toolbar,
-            text="Refresh Cycle",
+            text=f"{ICONS.get('refresh', '🔄')} Refresh Cycle",
             command=self._refresh_cycle_and_views,
-            style="Techfix.TButton",
-        ).pack(side=tk.LEFT, padx=(0, 12))
+            style="Techfix.Enhanced.TButton",
+        )
+        refresh_btn.pack(side=tk.LEFT, padx=(0, 12))
+        # Add hover animation
+        try:
+            self._add_hover_animation(refresh_btn)
+        except Exception:
+            pass
 
         ttk.Button(
             toolbar,
@@ -2013,29 +6769,38 @@ class TechFixApp(tk.Tk):
             command=self._load_15_entries_example,
             style="Techfix.TButton",
         ).pack(side=tk.LEFT, padx=(0, 12))
+        
+        # Undo/Redo buttons
+        undo_btn = ttk.Button(
+            toolbar,
+            text="↶ Undo",
+            command=self._undo_action,
+            style="Techfix.TButton",
+        )
+        undo_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self.undo_btn = undo_btn
+        
+        redo_btn = ttk.Button(
+            toolbar,
+            text="↷ Redo",
+            command=self._redo_action,
+            style="Techfix.TButton",
+        )
+        redo_btn.pack(side=tk.LEFT, padx=(0, 12))
+        self.redo_btn = redo_btn
 
-
-        # Theme toggle buttons
+        # Color theme button
         theme_frame = ttk.Frame(toolbar, style="Techfix.App.TFrame")
         theme_frame.pack(side=tk.RIGHT, padx=(0, 12))
         
-        self.light_btn = ttk.Button(
+        self.colors_btn = ttk.Button(
             theme_frame,
-            text="Light",
-            command=lambda: self._apply_theme("Light"),
+            text="Colors",
+            command=self._open_color_theme_picker,
             style="Techfix.Theme.TButton",
-            width=8
+            width=10
         )
-        self.light_btn.pack(side=tk.LEFT, padx=(0, 4))
-        
-        self.dark_btn = ttk.Button(
-            theme_frame,
-            text="Dark",
-            command=lambda: self._apply_theme("Dark"),
-            style="Techfix.Theme.TButton",
-            width=8
-        )
-        self.dark_btn.pack(side=tk.LEFT)
+        self.colors_btn.pack(side=tk.LEFT)
 
         cycle_frame = ttk.Labelframe(right_wrap, text="Accounting Cycle Status", style="Techfix.TLabelframe")
         cycle_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
@@ -2175,11 +6940,17 @@ class TechFixApp(tk.Tk):
             # Button expands to fill remaining space
             # Store emoji/label on the button so we can toggle between
             # icon-only (collapsed) and icon+label (expanded) sidebar states.
+            # Special handling for Dashboard (index -1)
+            if index == -1:
+                cmd = lambda: self._show_dashboard()
+            else:
+                cmd = lambda i=index: self._nav_to(i)
+            
             btn = ttk.Button(
                 row,
                 text=emoji or text,
                 style="Techfix.Nav.TButton",
-                command=lambda i=index: self._nav_to(i),
+                command=cmd,
             )
             # Custom attributes for hover-collapse behavior
             btn._nav_emoji = emoji
@@ -2206,19 +6977,21 @@ class TechFixApp(tk.Tk):
             btn.bind('<Enter>', on_enter)
             btn.bind('<Leave>', on_leave)
 
-            self._nav_buttons.append((indicator, btn))
+            # Store nav_index with each button for proper highlighting
+            self._nav_buttons.append((indicator, btn, index))
             return (indicator, btn)
 
         # Add navigation buttons (icons via emoji for simplicity)
+        make_nav("Dashboard", -1, "📊")  # Special index for dashboard
         make_nav("Transactions", 0, "🧾")
         make_nav("Journal", 1, "📓")
         make_nav("Ledger", 2, "📚")
         make_nav("Trial Balance", 3, "🧮")
         make_nav("Adjustments", 4, "⚙️")
-        make_nav("Fin. Statements", 5, "📊")
+        make_nav("Fin. Statements", 5, "💰")
         make_nav("Closing", 6, "🔒")
         make_nav("Post-Closing", 7, "📈")
-        make_nav("Export", 8, "⬇️")
+        make_nav("Im/Export", 8, "⬇️")
         make_nav("Audit Log", 9, "🧪")
         make_nav("How to Use?", 10, "❓")
 
@@ -2259,13 +7032,19 @@ class TechFixApp(tk.Tk):
 
         # Global keyboard shortcuts for navigation between major tabs
         try:
-            # Ctrl+1..Ctrl+0 jump between sidebar tabs (Transactions through Help)
-            for idx in range(len(self._tab_frames)):
-                digit = (idx + 1) % 10  # 1-9,0
+            # Ctrl+1 shows dashboard
+            self.bind("<Control-Key-1>", lambda e: self._show_dashboard())
+            # Ctrl+2..Ctrl+0 jump between sidebar tabs (Transactions through Help)
+            # Map Ctrl+2 to index 0 (Transactions), Ctrl+3 to index 1, etc.
+            for idx in range(min(len(self._tab_frames), 9)):  # Map up to 9 tabs (indices 0-8)
+                digit = (idx + 2) % 10  # Maps: 0->2, 1->3, ..., 7->9, 8->0
                 seq = f"<Control-Key-{digit}>"
                 self.bind(seq, lambda e, i=idx: self._nav_to(i))
         except Exception:
             pass
+        
+        # Additional keyboard shortcuts
+        self._setup_keyboard_shortcuts()
 
     # --- Sidebar toggle behavior (click-to-expand/collapse) ---------------------
 
@@ -2299,7 +7078,7 @@ class TechFixApp(tk.Tk):
             self.sidebar.update_idletasks()
 
             # Restore full labels on navigation buttons when expanded
-            for ind, btn in getattr(self, "_nav_buttons", []):
+            for ind, btn, nav_idx in getattr(self, "_nav_buttons", []):
                 try:
                     emoji = getattr(btn, "_nav_emoji", "")
                     label = getattr(btn, "_nav_label", "")
@@ -2334,7 +7113,7 @@ class TechFixApp(tk.Tk):
             self.sidebar.update_idletasks()
 
             # Show only icons on navigation buttons when collapsed
-            for ind, btn in getattr(self, "_nav_buttons", []):
+            for ind, btn, nav_idx in getattr(self, "_nav_buttons", []):
                 try:
                     emoji = getattr(btn, "_nav_emoji", "")
                     label = getattr(btn, "_nav_label", "")
@@ -2354,23 +7133,59 @@ class TechFixApp(tk.Tk):
 
     def _build_menubar(self) -> None:
         self.menubar = tk.Menu(self)
+        
+        # File menu
         self.file_menu = tk.Menu(self.menubar, tearoff=0)
-        self.file_menu.add_command(label="Exit", command=self._on_close)
+        self.file_menu.add_command(label="New Transaction", command=lambda: self._nav_to(0), accelerator="Ctrl+N")
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Import Data...", command=self._show_import_dialog, accelerator="Ctrl+I")
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Backup Database...", command=self._show_backup_dialog)
+        self.file_menu.add_command(label="Restore Database...", command=self._show_restore_dialog)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Exit", command=self._on_close, accelerator="Ctrl+Q")
         self.menubar.add_cascade(label="File", menu=self.file_menu)
 
+        # Edit menu
+        self.edit_menu = tk.Menu(self.menubar, tearoff=0)
+        self.edit_menu.add_command(label="Undo", command=self._undo_action, accelerator="Ctrl+Z", state=tk.DISABLED)
+        self.edit_menu.add_command(label="Redo", command=self._redo_action, accelerator="Ctrl+Y", state=tk.DISABLED)
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(label="Search...", command=self._show_search_dialog, accelerator="Ctrl+F")
+        self.menubar.add_cascade(label="Edit", menu=self.edit_menu)
+
+        # View menu
         self.view_menu = tk.Menu(self.menubar, tearoff=0)
         self.view_menu.add_command(label="Light Theme", command=lambda: self._apply_theme("Light"))
         self.view_menu.add_command(label="Dark Theme", command=lambda: self._apply_theme("Dark"))
         self.view_menu.add_separator()
-        self.view_menu.add_command(label="Toggle Fullscreen", command=lambda: self.attributes('-fullscreen', not self.attributes('-fullscreen')))
+        self.view_menu.add_command(label="Customize Colors...", command=self._open_color_picker)
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Dashboard", command=self._show_dashboard, accelerator="Ctrl+D")
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Toggle Fullscreen", command=lambda: self.attributes('-fullscreen', not self.attributes('-fullscreen')), accelerator="F11")
         self.menubar.add_cascade(label="View", menu=self.view_menu)
 
+        # Tools menu
+        self.tools_menu = tk.Menu(self.menubar, tearoff=0)
+        self.tools_menu.add_command(label="Notifications", command=self._show_notifications)
+        if self.auth_module:
+            self.tools_menu.add_separator()
+            self.tools_menu.add_command(label="Change Password...", command=self._show_change_password)
+            self.tools_menu.add_command(label="Logout", command=self._logout)
+        self.menubar.add_cascade(label="Tools", menu=self.tools_menu)
+
+        # Help menu
         self.help_menu = tk.Menu(self.menubar, tearoff=0)
-        self.help_menu.add_command(label="About", command=lambda: messagebox.showinfo("About TechFix", "TechFix Accounting App"))
+        self.help_menu.add_command(label="Keyboard Shortcuts", command=self._show_shortcuts_help)
+        self.help_menu.add_command(label="About", command=lambda: messagebox.showinfo("About TechFix", "TechFix Accounting App\nVersion 1.0"))
         self.menubar.add_cascade(label="Help", menu=self.help_menu)
 
         self.config(menu=self.menubar)
         self._style_menus()
+        
+        # Update undo/redo menu states
+        self._update_undo_redo_states()
 
     def _update_cycle_step_status(self, status: str) -> None:
         try:
@@ -2419,7 +7234,9 @@ class TechFixApp(tk.Tk):
                         direction = 'left'
                 except Exception:
                     pass
+                # Enhanced: Use fade + swipe animation
                 self._animate_swipe_to(sel, direction=direction)
+                self._animate_tab_fade(sel, fade_in=True, duration_ms=250)
             except Exception:
                 try:
                     sel.pack(fill=tk.BOTH, expand=True)
@@ -2429,8 +7246,8 @@ class TechFixApp(tk.Tk):
             # Update nav button visuals (indicator and selected style)
             try:
                 self._current_nav_index = index
-                for idx, (ind, btn) in enumerate(getattr(self, '_nav_buttons', ())):
-                    if idx == index:
+                for ind, btn, nav_idx in getattr(self, '_nav_buttons', ()):
+                    if nav_idx == index:
                         try:
                             ind.configure(bg=self.palette.get('accent_color'))
                         except Exception:
@@ -4830,8 +9647,20 @@ class TechFixApp(tk.Tk):
             # Left side buttons
             left_buttons = ttk.Frame(controls, style="Techfix.Surface.TFrame")
             left_buttons.pack(side=tk.LEFT)
-            ttk.Button(left_buttons, text="Refresh", command=self._load_recent_transactions_window, style="Techfix.TButton").pack(side=tk.LEFT, padx=(0, 6))
-            ttk.Button(left_buttons, text="Delete Selected", command=self._delete_selected_transaction_window, style="Techfix.Danger.TButton").pack(side=tk.LEFT)
+            def refresh_recent_transactions():
+                loading = self.show_loading("Please wait... Loading transactions...", window)
+                try:
+                    window.update()  # Update UI to show loading indicator
+                    self._load_recent_transactions_window()
+                finally:
+                    if loading:
+                        self.hide_loading(loading)
+            
+            ttk.Button(left_buttons, text="Refresh", command=refresh_recent_transactions, style="Techfix.TButton").pack(side=tk.LEFT, padx=(0, 6))
+            # Disable delete button for viewers
+            delete_btn_state = 'normal' if self._has_permission('edit') else 'disabled'
+            delete_btn = ttk.Button(left_buttons, text="Delete Selected", command=self._delete_selected_transaction_window, style="Techfix.Danger.TButton", state=delete_btn_state)
+            delete_btn.pack(side=tk.LEFT)
             
             # Close button on the right
             def on_close():
@@ -4982,6 +9811,15 @@ class TechFixApp(tk.Tk):
 
     def _delete_selected_transaction_window(self) -> None:
         """Delete selected transaction from the window."""
+        # Check permission - viewers cannot delete transactions
+        if not self._has_permission('edit'):
+            messagebox.showerror(
+                'Access Denied',
+                'You do not have permission to delete transactions. '
+                'Only users with edit permission (Accountant, Manager, Admin) can delete transactions.'
+            )
+            return
+        
         try:
             # Check if window exists and is still valid
             if not hasattr(self, '_recent_txn_window'):
@@ -5093,6 +9931,15 @@ class TechFixApp(tk.Tk):
             messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
 
     def _delete_selected_transaction(self) -> None:
+        # Check permission - viewers cannot delete transactions
+        if not self._has_permission('edit'):
+            messagebox.showerror(
+                'Access Denied',
+                'You do not have permission to delete transactions. '
+                'Only users with edit permission (Accountant, Manager, Admin) can delete transactions.'
+            )
+            return
+        
         try:
             if not hasattr(self, 'txn_recent_tree'):
                 return
@@ -6113,7 +10960,7 @@ class TechFixApp(tk.Tk):
             pass
 
         # Create the treeview for ledger entries
-        columns = ("account", "debit", "credit", "balance")
+        columns = ("account", "date", "description", "debit", "credit", "balance")
         self.ledger_tree = ttk.Treeview(
             frame,
             columns=columns,
@@ -6124,15 +10971,19 @@ class TechFixApp(tk.Tk):
 
         # Configure columns
         self.ledger_tree.heading("account", text="Account", anchor=tk.W)
+        self.ledger_tree.heading("date", text="Date", anchor=tk.W)
+        self.ledger_tree.heading("description", text="Description", anchor=tk.W)
         self.ledger_tree.heading("debit", text="Debit", anchor=tk.E)
         self.ledger_tree.heading("credit", text="Credit", anchor=tk.E)
         self.ledger_tree.heading("balance", text="Balance", anchor=tk.E)
 
         # Set column widths
-        self.ledger_tree.column("account", width=300, anchor=tk.W)
-        self.ledger_tree.column("debit", width=150, anchor=tk.E)
-        self.ledger_tree.column("credit", width=150, anchor=tk.E)
-        self.ledger_tree.column("balance", width=150, anchor=tk.E)
+        self.ledger_tree.column("account", width=150, anchor=tk.W)
+        self.ledger_tree.column("date", width=100, anchor=tk.W)
+        self.ledger_tree.column("description", width=250, anchor=tk.W)
+        self.ledger_tree.column("debit", width=120, anchor=tk.E)
+        self.ledger_tree.column("credit", width=120, anchor=tk.E)
+        self.ledger_tree.column("balance", width=120, anchor=tk.E)
 
         # Add scrollbar
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.ledger_tree.yview)
@@ -6160,7 +11011,10 @@ class TechFixApp(tk.Tk):
 
             offset = self._ledger_page * page_size
 
-            rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
+            # Fetch individual ledger transactions (not trial balance)
+            rows = db.fetch_ledger(period_id=self.engine.current_period_id, conn=self.engine.conn)
+            
+            # Apply account filter if specified
             sel = ''
             try:
                 sel = self.ledger_account_filter.get().strip()
@@ -6171,39 +11025,65 @@ class TechFixApp(tk.Tk):
                     code, name_match = sel.split(' - ', 1)
                 except Exception:
                     code, name_match = sel, ''
-                rows = [r for r in rows if (('code' in r.keys() and r['code'] == code) or r['name'] == name_match)]
-            # Hide accounts with zero activity in current period
-            def _has_activity(r):
-                d, c = self._balance_to_columns(r)
-                return bool((d or 0) != 0 or (c or 0) != 0)
-            rows = [r for r in rows if _has_activity(r)]
+                rows = [r for r in rows if (('code' in r.keys() and r['code'] == code) or ('name' in r.keys() and r['name'] == name_match))]
 
             # Apply paging after filters
             sliced = rows[offset : offset + page_size + 1]
             has_more = len(sliced) > page_size
             rows = sliced[:page_size]
             setattr(self, "_ledger_has_more", has_more)
+            
+            # Calculate running balances per account
+            account_balances = {}  # account_id -> running balance
             total_debit = 0.0
             total_credit = 0.0
+            
             for r in rows:
-                name = r['name']
-                try:
-                    code = r['code'] if 'code' in r.keys() else ''
-                    name = f"{code} - {name}" if code else name
-                except Exception:
-                    pass
-                d, c = self._balance_to_columns(r)
-                try:
-                    total_debit += float(d or 0)
-                except Exception:
-                    pass
-                try:
-                    total_credit += float(c or 0)
-                except Exception:
-                    pass
-                bal = d if d else c
-                side = 'Dr' if d else ('Cr' if c else '')
-                self.ledger_tree.insert('', 'end', values=(name, f"{d:,.2f}" if d else '', f"{c:,.2f}" if c else '', f"{bal:,.2f} {side}" if bal else ''))
+                # sqlite3.Row objects use dictionary-style access, not .get()
+                account_id = r['account_id'] if 'account_id' in r.keys() else None
+                code = r['code'] if 'code' in r.keys() else ''
+                name = r['name'] if 'name' in r.keys() else ''
+                date = r['date'] if 'date' in r.keys() else ''
+                description = r['description'] if 'description' in r.keys() else ''
+                debit = float(r['debit'] if 'debit' in r.keys() and r['debit'] is not None else 0)
+                credit = float(r['credit'] if 'credit' in r.keys() and r['credit'] is not None else 0)
+                
+                # Initialize account balance if first transaction for this account
+                if account_id not in account_balances:
+                    account_balances[account_id] = 0.0
+                
+                # Update running balance
+                account_balances[account_id] += (debit - credit)
+                running_balance = account_balances[account_id]
+                
+                # Format account display
+                account_display = f"{code} - {name}" if code else name
+                
+                # Format balance with Dr/Cr indicator
+                if abs(running_balance) < 0.01:
+                    balance_display = "0.00"
+                elif running_balance > 0:
+                    balance_display = f"{running_balance:,.2f} Dr"
+                else:
+                    balance_display = f"{abs(running_balance):,.2f} Cr"
+                
+                # Insert row
+                self.ledger_tree.insert(
+                    '',
+                    'end',
+                    values=(
+                        account_display,
+                        date,
+                        description,
+                        f"{debit:,.2f}" if debit else '',
+                        f"{credit:,.2f}" if credit else '',
+                        balance_display
+                    )
+                )
+                
+                total_debit += debit
+                total_credit += credit
+            
             # Totals row
             try:
                 self.ledger_tree.insert(
@@ -6211,6 +11091,8 @@ class TechFixApp(tk.Tk):
                     'end',
                     values=(
                         "Totals",
+                        "",
+                        "",
                         f"{total_debit:,.2f}" if total_debit else '',
                         f"{total_credit:,.2f}" if total_credit else '',
                         "",
@@ -6592,6 +11474,9 @@ class TechFixApp(tk.Tk):
 
     def _update_post_buttons_enabled(self) -> None:
         try:
+            # Check if user has permission to create transactions
+            has_create_permission = self._has_permission('create')
+            
             # Try to get from StringVar first, then fallback to combobox
             if hasattr(self, 'debit_acct_var'):
                 dd = self.debit_acct_var.get().strip()
@@ -6610,7 +11495,8 @@ class TechFixApp(tk.Tk):
             d = self.debit_amt.get().strip() if hasattr(self, 'debit_amt') else ''
             c = self.credit_amt.get().strip() if hasattr(self, 'credit_amt') else ''
             
-            enabled = bool(dd) and bool(cc) and bool(d) and bool(c)
+            # Buttons are enabled only if user has permission AND form is filled
+            enabled = has_create_permission and bool(dd) and bool(cc) and bool(d) and bool(c)
             state = 'normal' if enabled else 'disabled'
             
             if hasattr(self, 'btn_post'):
@@ -6620,7 +11506,8 @@ class TechFixApp(tk.Tk):
                     pass
             if hasattr(self, 'btn_draft'):
                 try:
-                    self.btn_draft.configure(state='normal')
+                    # Draft button also needs permission check
+                    self.btn_draft.configure(state=state)
                 except Exception:
                     pass
         except Exception as e:
@@ -7164,6 +12051,15 @@ class TechFixApp(tk.Tk):
             return False
 
     def _record_transaction(self, status: str) -> None:
+        # Check permission - viewers cannot create transactions
+        if not self._has_permission('create'):
+            messagebox.showerror(
+                'Access Denied',
+                'You do not have permission to create transactions. '
+                'Only users with create permission (Accountant, Manager, Admin) can record transactions.'
+            )
+            return
+        
         try:
             date = self.txn_date.get().strip() if hasattr(self, 'txn_date') else ''
             desc = self.txn_desc.get().strip() if hasattr(self, 'txn_desc') else ''
@@ -7687,10 +12583,19 @@ class TechFixApp(tk.Tk):
 
         preset_box.bind("<<ComboboxSelected>>", _on_preset_change)
         
+        def load_financials_with_loading():
+            loading = self.show_loading("Please wait... Generating financial statements...")
+            try:
+                self.update()  # Update UI to show loading indicator
+                self._load_financials()
+            finally:
+                if loading:
+                    self.hide_loading(loading)
+        
         run_btn = ttk.Button(
             btn_frame, 
             text="📊 Run Report", 
-            command=self._load_financials, 
+            command=load_financials_with_loading, 
             style="Techfix.TButton"
         )
         run_btn.grid(row=0, column=1, padx=4, pady=2, sticky="w")
@@ -7798,7 +12703,7 @@ class TechFixApp(tk.Tk):
         ttk.Button(controls, text="Refresh", command=self._load_trial_balances, style="Techfix.TButton").pack(side=tk.LEFT)
         # Export trial balance to Excel
         ttk.Button(controls, text="Export to Excel", command=lambda: self._export_tree_to_excel(self.trial_tree, default_name=f"trial_balance_{self.tb_date.get() if hasattr(self, 'tb_date') else ''}.xlsx"), style="Techfix.TButton").pack(side=tk.LEFT, padx=(6,0))
-        self.tb_status_label = ttk.Label(controls, text="Unadjusted Trial Balance", style="Techfix.TLabel")
+        self.tb_status_label = ttk.Label(controls, text="Trial Balance", style="Techfix.TLabel")
         self.tb_status_label.pack(side=tk.RIGHT)
 
         cols = ("code", "name", "debit", "credit")
@@ -7835,14 +12740,25 @@ class TechFixApp(tk.Tk):
 
             rows = db.compute_trial_balance(up_to_date=as_of, include_temporary=True, period_id=self.engine.current_period_id, conn=self.engine.conn)
             try:
-                statuses = self.engine.get_cycle_status()
-                step5 = next((r for r in statuses if int(r['step']) == 5), None)
-                if step5 and (step5['status'] == 'completed'):
+                # Check if there are any adjusting entries in the current period
+                # If adjusting entries exist, show "Adjusted Trial Balance", otherwise "Unadjusted Trial Balance"
+                cur = self.engine.conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM journal_entries
+                    WHERE period_id = ? 
+                      AND is_adjusting = 1 
+                      AND status = 'posted'
+                """, (self.engine.current_period_id,))
+                result = cur.fetchone()
+                has_adjusting_entries = result and result['count'] > 0
+                
+                if has_adjusting_entries:
                     self.tb_status_label.configure(text="Adjusted Trial Balance")
                 else:
                     self.tb_status_label.configure(text="Unadjusted Trial Balance")
             except Exception:
-                pass
+                # Default to showing "Adjusted Trial Balance" since compute_trial_balance includes all entries
+                self.tb_status_label.configure(text="Adjusted Trial Balance")
             # Show only accounts with non-zero balance/activity for the active period
             def _has_activity(r: dict) -> bool:
                 dcol, ccol = self._balance_to_columns(r)
@@ -9261,6 +14177,43 @@ class TechFixApp(tk.Tk):
     # --------------------- Export Tab ---------------------
     def _build_export_tab(self) -> None:
         frame = self.tab_export
+        
+        # Import/Backup/Restore section
+        import_wrapper = ttk.Labelframe(frame, text="Import & Backup", style="Techfix.TLabelframe")
+        import_wrapper.pack(fill=tk.X, padx=12, pady=(12, 6))
+        
+        # Button container for horizontal layout
+        import_btn_container = ttk.Frame(import_wrapper, style="Techfix.Surface.TFrame")
+        import_btn_container.pack(fill=tk.X, padx=12, pady=12)
+        
+        # Import button
+        import_btn = ttk.Button(
+            import_btn_container,
+            text=f"{ICONS.get('add', '📥')} Import",
+            command=self._show_import_dialog,
+            style="Techfix.Enhanced.TButton",
+        )
+        import_btn.pack(side=tk.LEFT, padx=(0, 6))
+        
+        # Backup button
+        backup_btn = ttk.Button(
+            import_btn_container,
+            text=f"{ICONS.get('save', '💾')} Backup",
+            command=self._show_backup_dialog,
+            style="Techfix.Enhanced.TButton",
+        )
+        backup_btn.pack(side=tk.LEFT, padx=(0, 6))
+        
+        # Restore button
+        restore_btn = ttk.Button(
+            import_btn_container,
+            text=f"{ICONS.get('refresh', '📂')} Restore",
+            command=self._show_restore_dialog,
+            style="Techfix.Enhanced.TButton",
+        )
+        restore_btn.pack(side=tk.LEFT, padx=(0, 6))
+        
+        # Export section
         wrapper = ttk.Labelframe(frame, text="Export Options", style="Techfix.TLabelframe")
         wrapper.pack(fill=tk.X, padx=12, pady=12)
 
@@ -9570,38 +14523,110 @@ class TechFixApp(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel","*.xlsx")])
         if not path:
             return
-        rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
-        # derive debit/credit
-        headers = ["code","name","debit","credit"]
         try:
             from openpyxl import Workbook
             from openpyxl.utils import get_column_letter
             from openpyxl.styles import Font
 
             wb = Workbook()
-            ws = wb.active
-            ws.title = "Trial Balance"
+            
+            # --- Combined Trial Balance sheet ---
+            ws_tb = wb.active
+            ws_tb.title = "Trial Balance"
+            
+            # Title row
+            title_cell = ws_tb.cell(row=1, column=1, value="TRIAL BALANCE")
+            title_cell.font = Font(bold=True, size=14)
+            ws_tb.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+            
+            # Headers with clear labels
+            headers = [
+                "Code", 
+                "Account Name", 
+                "Unadjusted Debit", 
+                "Unadjusted Credit",
+                "Adjusted Debit",
+                "Adjusted Credit"
+            ]
             for cidx, h in enumerate(headers, start=1):
-                ws.cell(row=1, column=cidx, value=h).font = Font(bold=True)
-
-            for ridx, r in enumerate(rows, start=2):
-                d, c = self._balance_to_columns(r)
-                ws.cell(row=ridx, column=1, value=r["code"] if "code" in r.keys() else "")
-                ws.cell(row=ridx, column=2, value=r["name"] if "name" in r.keys() else "")
-                ws.cell(row=ridx, column=3, value=float(d or 0))
-                ws.cell(row=ridx, column=4, value=float(c or 0))
-
-            last = ws.max_row
-            if last >= 2:
-                col_c = get_column_letter(3)
-                col_d = get_column_letter(4)
-                total_row = last + 1
-                ws.cell(row=total_row, column=2, value="Totals:").font = Font(bold=True)
-                ws.cell(row=total_row, column=3, value=f"=SUM({col_c}2:{col_c}{last})")
-                ws.cell(row=total_row, column=4, value=f"=SUM({col_d}2:{col_d}{last})")
-
-            for i in range(1, len(headers) + 1):
-                ws.column_dimensions[get_column_letter(i)].width = 15
+                cell = ws_tb.cell(row=2, column=cidx, value=h)
+                cell.font = Font(bold=True)
+            
+            # Get both unadjusted and adjusted trial balances
+            unadj_rows = db.compute_unadjusted_trial_balance(
+                period_id=self.engine.current_period_id,
+                include_temporary=True,
+                conn=self.engine.conn
+            )
+            adj_rows = db.compute_trial_balance(
+                period_id=self.engine.current_period_id,
+                conn=self.engine.conn
+            )
+            
+            # Create dictionaries for easy lookup
+            unadj_by_code = {r["code"]: r for r in unadj_rows if "code" in r.keys() and r["code"]}
+            adj_by_code = {r["code"]: r for r in adj_rows if "code" in r.keys() and r["code"]}
+            
+            # Get all unique account codes
+            all_codes = sorted(set(list(unadj_by_code.keys()) + list(adj_by_code.keys())))
+            
+            # Write data rows
+            for ridx, code in enumerate(all_codes, start=3):
+                unadj_r = unadj_by_code.get(code)
+                adj_r = adj_by_code.get(code)
+                
+                # Get account name (prefer from adjusted, fallback to unadjusted)
+                if adj_r:
+                    name = adj_r["name"] if "name" in adj_r.keys() else ""
+                elif unadj_r:
+                    name = unadj_r["name"] if "name" in unadj_r.keys() else ""
+                else:
+                    name = ""
+                
+                # Get unadjusted balances
+                if unadj_r:
+                    unadj_d, unadj_c = self._balance_to_columns(unadj_r)
+                else:
+                    unadj_d, unadj_c = 0.0, 0.0
+                
+                # Get adjusted balances
+                if adj_r:
+                    adj_d, adj_c = self._balance_to_columns(adj_r)
+                else:
+                    adj_d, adj_c = 0.0, 0.0
+                
+                ws_tb.cell(row=ridx, column=1, value=code)
+                ws_tb.cell(row=ridx, column=2, value=name)
+                ws_tb.cell(row=ridx, column=3, value=float(unadj_d or 0))
+                ws_tb.cell(row=ridx, column=4, value=float(unadj_c or 0))
+                ws_tb.cell(row=ridx, column=5, value=float(adj_d or 0))
+                ws_tb.cell(row=ridx, column=6, value=float(adj_c or 0))
+            
+            # Add totals row
+            last_row = ws_tb.max_row
+            if last_row >= 3:
+                total_row = last_row + 1
+                ws_tb.cell(row=total_row, column=2, value="Totals:").font = Font(bold=True)
+                
+                # Unadjusted totals
+                col_unadj_d = get_column_letter(3)
+                col_unadj_c = get_column_letter(4)
+                ws_tb.cell(row=total_row, column=3, value=f"=SUM({col_unadj_d}3:{col_unadj_d}{last_row})").font = Font(bold=True)
+                ws_tb.cell(row=total_row, column=4, value=f"=SUM({col_unadj_c}3:{col_unadj_c}{last_row})").font = Font(bold=True)
+                
+                # Adjusted totals
+                col_adj_d = get_column_letter(5)
+                col_adj_c = get_column_letter(6)
+                ws_tb.cell(row=total_row, column=5, value=f"=SUM({col_adj_d}3:{col_adj_d}{last_row})").font = Font(bold=True)
+                ws_tb.cell(row=total_row, column=6, value=f"=SUM({col_adj_c}3:{col_adj_c}{last_row})").font = Font(bold=True)
+            
+            # Set column widths
+            ws_tb.column_dimensions[get_column_letter(1)].width = 10  # Code
+            ws_tb.column_dimensions[get_column_letter(2)].width = 25  # Account Name
+            ws_tb.column_dimensions[get_column_letter(3)].width = 18  # Unadjusted Debit
+            ws_tb.column_dimensions[get_column_letter(4)].width = 18  # Unadjusted Credit
+            ws_tb.column_dimensions[get_column_letter(5)].width = 18  # Adjusted Debit
+            ws_tb.column_dimensions[get_column_letter(6)].width = 18  # Adjusted Credit
 
             wb.save(path)
             messagebox.showinfo("Exported", "Trial balance exported to Excel.")
@@ -9815,30 +14840,194 @@ class TechFixApp(tk.Tk):
             for i, _ in enumerate(l_headers, start=1):
                 ws_l.column_dimensions[get_column_letter(i)].width = 15
 
-            # --- Trial Balance sheet ---
+            # --- Combined Trial Balance sheet ---
             ws_tb = wb.create_sheet(title="Trial Balance")
-            tb_headers = ["code", "name", "debit", "credit"]
+            
+            # Title row
+            title_cell = ws_tb.cell(row=1, column=1, value="TRIAL BALANCE")
+            title_cell.font = Font(bold=True, size=14)
+            ws_tb.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+            
+            # Headers with clear labels
+            tb_headers = [
+                "Code", 
+                "Account Name", 
+                "Unadjusted Debit", 
+                "Unadjusted Credit",
+                "Adjusted Debit",
+                "Adjusted Credit"
+            ]
             for cidx, h in enumerate(tb_headers, start=1):
-                cell = ws_tb.cell(row=1, column=cidx, value=h)
+                cell = ws_tb.cell(row=2, column=cidx, value=h)
                 cell.font = Font(bold=True)
-            tb_rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
-            for ridx, r in enumerate(tb_rows, start=2):
-                d, c = self._balance_to_columns(r)
-                ws_tb.cell(row=ridx, column=1, value=r["code"] if "code" in r.keys() else "")
-                ws_tb.cell(row=ridx, column=2, value=r["name"] if "name" in r.keys() else "")
-                ws_tb.cell(row=ridx, column=3, value=float(d or 0))
-                ws_tb.cell(row=ridx, column=4, value=float(c or 0))
-            # Add totals row for trial balance
+            
+            # Get both unadjusted and adjusted trial balances
+            unadj_tb_data = db.compute_unadjusted_trial_balance(
+                period_id=self.engine.current_period_id,
+                include_temporary=True,
+                conn=self.engine.conn
+            )
+            adj_tb_rows = db.compute_trial_balance(
+                period_id=self.engine.current_period_id,
+                conn=self.engine.conn
+            )
+            
+            # Create dictionaries for easy lookup
+            unadj_by_code = {r["code"]: r for r in unadj_tb_data if "code" in r.keys() and r["code"]}
+            adj_by_code = {r["code"]: r for r in adj_tb_rows if "code" in r.keys() and r["code"]}
+            
+            # Get all unique account codes
+            all_codes = sorted(set(list(unadj_by_code.keys()) + list(adj_by_code.keys())))
+            
+            # Write data rows
+            for ridx, code in enumerate(all_codes, start=3):
+                unadj_r = unadj_by_code.get(code)
+                adj_r = adj_by_code.get(code)
+                
+                # Get account name (prefer from adjusted, fallback to unadjusted)
+                if adj_r:
+                    name = adj_r["name"] if "name" in adj_r.keys() else ""
+                elif unadj_r:
+                    name = unadj_r["name"] if "name" in unadj_r.keys() else ""
+                else:
+                    name = ""
+                
+                # Get unadjusted balances
+                if unadj_r:
+                    unadj_d, unadj_c = self._balance_to_columns(unadj_r)
+                else:
+                    unadj_d, unadj_c = 0.0, 0.0
+                
+                # Get adjusted balances
+                if adj_r:
+                    adj_d, adj_c = self._balance_to_columns(adj_r)
+                else:
+                    adj_d, adj_c = 0.0, 0.0
+                
+                ws_tb.cell(row=ridx, column=1, value=code)
+                ws_tb.cell(row=ridx, column=2, value=name)
+                ws_tb.cell(row=ridx, column=3, value=float(unadj_d or 0))
+                ws_tb.cell(row=ridx, column=4, value=float(unadj_c or 0))
+                ws_tb.cell(row=ridx, column=5, value=float(adj_d or 0))
+                ws_tb.cell(row=ridx, column=6, value=float(adj_c or 0))
+            
+            # Add totals row
             last_tb = ws_tb.max_row
-            if last_tb >= 2:
-                ccol = get_column_letter(3)
-                dcol = get_column_letter(4)
+            if last_tb >= 3:
                 total_row = last_tb + 1
                 ws_tb.cell(row=total_row, column=2, value="Totals:").font = Font(bold=True)
-                ws_tb.cell(row=total_row, column=3, value=f"=SUM({ccol}2:{ccol}{last_tb})")
-                ws_tb.cell(row=total_row, column=4, value=f"=SUM({dcol}2:{dcol}{last_tb})")
-            for i, _ in enumerate(tb_headers, start=1):
-                ws_tb.column_dimensions[get_column_letter(i)].width = 15
+                
+                # Unadjusted totals
+                col_unadj_d = get_column_letter(3)
+                col_unadj_c = get_column_letter(4)
+                ws_tb.cell(row=total_row, column=3, value=f"=SUM({col_unadj_d}3:{col_unadj_d}{last_tb})").font = Font(bold=True)
+                ws_tb.cell(row=total_row, column=4, value=f"=SUM({col_unadj_c}3:{col_unadj_c}{last_tb})").font = Font(bold=True)
+                
+                # Adjusted totals
+                col_adj_d = get_column_letter(5)
+                col_adj_c = get_column_letter(6)
+                ws_tb.cell(row=total_row, column=5, value=f"=SUM({col_adj_d}3:{col_adj_d}{last_tb})").font = Font(bold=True)
+                ws_tb.cell(row=total_row, column=6, value=f"=SUM({col_adj_c}3:{col_adj_c}{last_tb})").font = Font(bold=True)
+            
+            # Set column widths
+            ws_tb.column_dimensions[get_column_letter(1)].width = 10  # Code
+            ws_tb.column_dimensions[get_column_letter(2)].width = 25  # Account Name
+            ws_tb.column_dimensions[get_column_letter(3)].width = 18  # Unadjusted Debit
+            ws_tb.column_dimensions[get_column_letter(4)].width = 18  # Unadjusted Credit
+            ws_tb.column_dimensions[get_column_letter(5)].width = 18  # Adjusted Debit
+            ws_tb.column_dimensions[get_column_letter(6)].width = 18  # Adjusted Credit
+
+            # --- Post-Closing Trial Balance sheet ---
+            ws_pctb = wb.create_sheet(title="Post-Closing TB")
+            
+            # Title row
+            title_cell = ws_pctb.cell(row=1, column=1, value="POST-CLOSING TRIAL BALANCE")
+            title_cell.font = Font(bold=True, size=14)
+            ws_pctb.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+            
+            # Headers
+            pctb_headers = [
+                "Code", 
+                "Account Name", 
+                "Debit", 
+                "Credit"
+            ]
+            for cidx, h in enumerate(pctb_headers, start=1):
+                cell = ws_pctb.cell(row=2, column=cidx, value=h)
+                cell.font = Font(bold=True)
+            
+            # Get post-closing trial balance (exclude temporary accounts)
+            pctb_rows = db.compute_trial_balance(
+                period_id=self.engine.current_period_id,
+                include_temporary=False,
+                conn=self.engine.conn
+            )
+            
+            # Filter to only show accounts with non-zero balances
+            def _has_activity_pc(r: dict) -> bool:
+                d, c = self._balance_to_columns(r)
+                return bool((d or 0) != 0 or (c or 0) != 0)
+            
+            pctb_rows = [r for r in pctb_rows if _has_activity_pc(r)]
+            
+            # Write data rows
+            for ridx, r in enumerate(pctb_rows, start=3):
+                code = r["code"] if "code" in r.keys() else ""
+                name = r["name"] if "name" in r.keys() else ""
+                d, c = self._balance_to_columns(r)
+                
+                ws_pctb.cell(row=ridx, column=1, value=code)
+                ws_pctb.cell(row=ridx, column=2, value=name)
+                ws_pctb.cell(row=ridx, column=3, value=float(d or 0))
+                ws_pctb.cell(row=ridx, column=4, value=float(c or 0))
+            
+            # Add totals row
+            last_pctb = ws_pctb.max_row
+            if last_pctb >= 3:
+                total_row = last_pctb + 1
+                ws_pctb.cell(row=total_row, column=2, value="Totals:").font = Font(bold=True)
+                
+                col_d = get_column_letter(3)
+                col_c = get_column_letter(4)
+                ws_pctb.cell(row=total_row, column=3, value=f"=SUM({col_d}3:{col_d}{last_pctb})").font = Font(bold=True)
+                ws_pctb.cell(row=total_row, column=4, value=f"=SUM({col_c}3:{col_c}{last_pctb})").font = Font(bold=True)
+            
+            # Set column widths
+            ws_pctb.column_dimensions[get_column_letter(1)].width = 10  # Code
+            ws_pctb.column_dimensions[get_column_letter(2)].width = 25  # Account Name
+            ws_pctb.column_dimensions[get_column_letter(3)].width = 18  # Debit
+            ws_pctb.column_dimensions[get_column_letter(4)].width = 18  # Credit
+
+            # Helper function for adjusting entries (used by Worksheet)
+            def _tb_filtered_adjusting():
+                period_id = self.engine.current_period_id
+                # The balance expression uses 2 placeholders, and it's used 4 times in the SQL
+                # (twice in net_debit calculation, twice in net_credit calculation)
+                # So we need 8 placeholders total: 2 * 4 = 8
+                balance = """
+                    COALESCE(SUM(CASE 
+                        WHEN je.period_id = ? AND je.is_adjusting = 1 THEN jl.debit 
+                        ELSE 0 
+                    END), 0) - 
+                    COALESCE(SUM(CASE 
+                        WHEN je.period_id = ? AND je.is_adjusting = 1 THEN jl.credit 
+                        ELSE 0 
+                    END), 0)
+                """
+                sql = f"""
+                    SELECT a.code, a.name, a.type,
+                           ROUND(CASE WHEN ({balance}) > 0 THEN ({balance}) ELSE 0 END, 2) AS net_debit,
+                           ROUND(CASE WHEN ({balance}) < 0 THEN -(({balance})) ELSE 0 END, 2) AS net_credit
+                    FROM accounts a
+                    LEFT JOIN journal_lines jl ON jl.account_id = a.id
+                    LEFT JOIN journal_entries je ON je.id = jl.entry_id
+                    WHERE a.is_active = 1
+                    GROUP BY a.id, a.code, a.name, a.type
+                    ORDER BY a.code
+                """
+                # Supply 8 parameters: period_id for each of the 8 placeholders
+                cur = self.engine.conn.execute(sql, [period_id] * 8)
+                return list(cur.fetchall())
 
             ws_w = wb.create_sheet(title="Worksheet")
             ws_w.append([
@@ -9855,40 +15044,28 @@ class TechFixApp(tk.Tk):
                 "Statement of Financial Position Dr",
                 "Statement of Financial Position Cr",
             ])
-            def _tb_filtered(is_adjusting=None):
-                where = "a.is_active=1 AND je.period_id = ?"
-                params = [self.engine.current_period_id]
-                if is_adjusting is not None:
-                    where += " AND je.is_adjusting = ?"
-                    params.append(1 if is_adjusting else 0)
-                balance = "(COALESCE(SUM(jl.debit),0) - COALESCE(SUM(jl.credit),0))"
-                sql = f"""
-                    SELECT a.code, a.name, a.type,
-                           ROUND(CASE WHEN {balance} > 0 THEN {balance} ELSE 0 END,2) AS net_debit,
-                           ROUND(CASE WHEN {balance} < 0 THEN -({balance}) ELSE 0 END,2) AS net_credit
-                    FROM accounts a
-                    LEFT JOIN journal_lines jl ON jl.account_id = a.id
-                    LEFT JOIN journal_entries je ON je.id = jl.entry_id
-                    WHERE {where}
-                    GROUP BY a.id, a.code, a.name, a.type
-                    ORDER BY a.code
-                """
-                cur = self.engine.conn.execute(sql, params)
-                return list(cur.fetchall())
-            unadj = _tb_filtered(False)
-            adjs = _tb_filtered(True)
-            adj_tb_rows = db.compute_trial_balance(period_id=self.engine.current_period_id, conn=self.engine.conn)
-            un_by_code = {r["code"]: r for r in unadj}
-            adj_by_code = {r["code"]: r for r in adjs}
-            adjtb_by_code = {r["code"]: r for r in adj_tb_rows}
-            codes = sorted(set(list(un_by_code.keys()) + list(adj_by_code.keys()) + list(adjtb_by_code.keys())))
+            # Use the data we already fetched for Trial Balance sheet
+            # unadj_by_code and adj_by_code are already created above
+            # Use helper function for adjusting entries only
+            adjs = _tb_filtered_adjusting()
+            # adj_tb_rows is already fetched above as adj_tb_rows
+            # unadj_by_code and adj_by_code are already created above for Trial Balance sheet
+            adj_by_code_adjs = {r["code"]: r for r in adjs}
+            adjtb_by_code = adj_by_code  # Already created above
+            codes = sorted(set(list(unadj_by_code.keys()) + list(adj_by_code_adjs.keys()) + list(adjtb_by_code.keys())))
             totals = {"un_dr":0.0,"un_cr":0.0,"aj_dr":0.0,"aj_cr":0.0,"ad_dr":0.0,"ad_cr":0.0,"is_dr":0.0,"is_cr":0.0,"sfp_dr":0.0,"sfp_cr":0.0}
             for code in codes:
-                ru = un_by_code.get(code)
-                ra = adj_by_code.get(code)
+                ru = unadj_by_code.get(code)
+                ra = adj_by_code_adjs.get(code)
                 rt = adjtb_by_code.get(code)
-                name = (rt or ru or ra)["name"]
-                typ = (rt or ru or ra)["type"]
+                # Get name and type from first available row
+                row_for_name = rt or ru or ra
+                if row_for_name:
+                    name = row_for_name["name"] if "name" in row_for_name.keys() else ""
+                    typ = row_for_name["type"] if "type" in row_for_name.keys() else ""
+                else:
+                    name = ""
+                    typ = ""
                 un_dr = float(ru["net_debit"]) if ru else 0.0
                 un_cr = float(ru["net_credit"]) if ru else 0.0
                 aj_dr = float(ra["net_debit"]) if ra else 0.0

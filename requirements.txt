@@ -12,3 +12,12 @@ pyzbar>=0.1.9
 # Document generation and export
 openpyxl>=3.1.0
 reportlab>=4.0.0
+
+# Security and authentication (optional - fallbacks available)
+# Install with: pip install bcrypt cryptography
+# bcrypt>=4.0.0
+# cryptography>=41.0.0
+
+# Data import/export (optional - import feature requires this)
+# Install with: pip install pandas
+# pandas>=2.0.0
