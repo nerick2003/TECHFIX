@@ -12,7 +12,11 @@ import json
 import sys
 import subprocess
 import platform
+import os
 import logging
+import smtplib
+import tempfile
+from email.message import EmailMessage
 try:
     import winreg
 except Exception:
@@ -2936,6 +2940,7 @@ class TechFixApp(tk.Tk):
                 return f"{size_bytes:.1f} TB"
             
             selected_backup = None
+            path_map: dict[str, str] = {}
             for backup_info in backups:
                 created_str = backup_info['created'].strftime("%Y-%m-%d %H:%M:%S")
                 size_str = format_size(backup_info['size'])
@@ -2947,8 +2952,8 @@ class TechFixApp(tk.Tk):
                     size_str,
                     created_str
                 ))
-                # Store backup path in item tags
-                backup_tree.set(item_id, 'path', str(backup_info['path']))
+                # Store backup path in a side map keyed by item id.
+                path_map[item_id] = str(backup_info['path'])
             
             # Select first item by default
             if backups:
@@ -2962,11 +2967,10 @@ class TechFixApp(tk.Tk):
                     item = backup_tree.item(selection[0])
                     nonlocal selected_backup
                     selected_backup = item.get('values', [])
-                    # Get path from stored data
-                    try:
-                        selected_backup = backup_tree.set(selection[0], 'path')
-                    except:
-                        # Fallback: find by name
+                    # Get path from stored side map
+                    selected_backup = path_map.get(selection[0])
+                    # Fallback: find by name if map entry missing
+                    if not selected_backup:
                         for backup_info in backups:
                             if backup_info['name'] == item['values'][0]:
                                 selected_backup = str(backup_info['path'])
@@ -2978,6 +2982,25 @@ class TechFixApp(tk.Tk):
             btn_frame = ttk.Frame(main_frame, style="Techfix.Surface.TFrame")
             btn_frame.pack(fill=tk.X, pady=(12, 0))
             
+            def _show_loading(message: str) -> tuple[tk.Toplevel, ttk.Progressbar]:
+                """Show a simple modal loading dialog."""
+                loading = tk.Toplevel(dialog)
+                loading.title("Please wait")
+                loading.transient(dialog)
+                loading.grab_set()
+                loading.resizable(False, False)
+                loading.configure(bg=self.palette.get("surface_bg", "#ffffff"))
+                loading.protocol("WM_DELETE_WINDOW", lambda: None)  # Disable close
+
+                frame = ttk.Frame(loading, padding=16, style="Techfix.Surface.TFrame")
+                frame.pack(fill=tk.BOTH, expand=True)
+                ttk.Label(frame, text=message, style="Techfix.TLabel").pack(pady=(0, 12))
+                pb = ttk.Progressbar(frame, mode="indeterminate")
+                pb.pack(fill=tk.X)
+                pb.start(12)
+                loading.update_idletasks()
+                return loading, pb
+
             def perform_restore():
                 selection = backup_tree.selection()
                 if not selection:
@@ -2986,7 +3009,7 @@ class TechFixApp(tk.Tk):
                 
                 item = backup_tree.item(selection[0])
                 try:
-                    backup_path_str = backup_tree.set(selection[0], 'path')
+                    backup_path_str = path_map.get(selection[0], "")
                     if not backup_path_str:
                         # Fallback: find by name
                         for backup_info in backups:
@@ -3012,29 +3035,32 @@ class TechFixApp(tk.Tk):
                     ):
                         return
                     
-                    # Close database connections before restore
+                    loading, pb = _show_loading("Restoring backup, please wait...")
                     try:
-                        if hasattr(self, 'engine') and self.engine:
-                            self.engine.close()
-                    except:
-                        pass
-                    
-                    # Perform restore
-                    if backup_path.suffix == '.zip':
-                        success = backup.restore_full_backup(backup_path)
-                    else:
-                        success = backup.restore_backup(backup_path)
+                        # Close database connections before restore
+                        try:
+                            if hasattr(self, 'engine') and self.engine:
+                                self.engine.close()
+                        except:
+                            pass
+                        
+                        # Perform restore
+                        if backup_path.suffix == '.zip':
+                            success = backup.restore_full_backup(backup_path)
+                        else:
+                            success = backup.restore_backup(backup_path)
+                    finally:
+                        pb.stop()
+                        loading.destroy()
                     
                     if success:
                         messagebox.showinfo(
                             "Success",
                             "Database restored successfully.\n\n"
-                            "The application will now close.\n"
-                            "Please restart to use the restored database.",
+                            "Please restart the application to ensure all data is reloaded.",
                             parent=dialog
                         )
                         dialog.destroy()
-                        self._on_close()
                     else:
                         messagebox.showerror("Error", "Restore failed. Please check the logs for details.", parent=dialog)
                 except Exception as e:
@@ -3070,21 +3096,25 @@ class TechFixApp(tk.Tk):
                         f"Restore from {backup_path.name}?\n\nThis will replace the current database.",
                         parent=dialog
                     ):
+                        loading, pb = _show_loading("Restoring backup, please wait...")
                         try:
-                            if hasattr(self, 'engine') and self.engine:
-                                self.engine.close()
-                        except:
-                            pass
-                        
-                        if backup_path.suffix == '.zip':
-                            success = backup.restore_full_backup(backup_path)
-                        else:
-                            success = backup.restore_backup(backup_path)
+                            try:
+                                if hasattr(self, 'engine') and self.engine:
+                                    self.engine.close()
+                            except:
+                                pass
+                            
+                            if backup_path.suffix == '.zip':
+                                success = backup.restore_full_backup(backup_path)
+                            else:
+                                success = backup.restore_backup(backup_path)
+                        finally:
+                            pb.stop()
+                            loading.destroy()
                         
                         if success:
-                            messagebox.showinfo("Success", "Database restored. Please restart the application.", parent=dialog)
+                            messagebox.showinfo("Success", "Database restored. Please restart the application to ensure all data is reloaded.", parent=dialog)
                             dialog.destroy()
-                            self._on_close()
                         else:
                             messagebox.showerror("Error", "Restore failed", parent=dialog)
             
@@ -5695,38 +5725,93 @@ Help:
         except Exception:
             pass
 
-    def _load_window_settings(self):
+    def _read_settings_file(self) -> dict:
         try:
             settings_path = db.DB_DIR / "settings.json"
             if settings_path.exists():
                 data = json.loads(settings_path.read_text(encoding="utf-8"))
-                geom = data.get("geometry")
-                full = data.get("fullscreen")
-                theme = data.get("theme")
-                if isinstance(geom, str) and geom:
-                    self.geometry(geom)
-                if isinstance(full, bool):
-                    self.attributes('-fullscreen', full)
-                if isinstance(theme, str) and theme in THEMES:
-                    self.theme_name = theme
-                    self.palette = THEMES[theme].copy()  # Use copy to avoid modifying original
-                    # Load custom colors if available
-                    custom_colors = self._load_custom_colors()
-                    if custom_colors:
-                        self.palette.update(custom_colors)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+        return {}
+
+    def _write_settings_file(self, data: dict) -> None:
+        try:
+            settings_path = db.DB_DIR / "settings.json"
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception:
             pass
 
+    def _load_window_settings(self):
+        try:
+            data = self._read_settings_file()
+            geom = data.get("geometry")
+            full = data.get("fullscreen")
+            theme = data.get("theme")
+            if isinstance(geom, str) and geom:
+                self.geometry(geom)
+            if isinstance(full, bool):
+                self.attributes('-fullscreen', full)
+            if isinstance(theme, str) and theme in THEMES:
+                self.theme_name = theme
+                self.palette = THEMES[theme].copy()  # Use copy to avoid modifying original
+                # Load custom colors if available
+                custom_colors = self._load_custom_colors()
+                if custom_colors:
+                    self.palette.update(custom_colors)
+            # Load saved email accounts (used by export dialog)
+            email_accounts = data.get("email_accounts")
+            self.email_accounts = email_accounts if isinstance(email_accounts, list) else []
+        except Exception:
+            self.email_accounts = []
+
     def _save_window_settings(self):
         try:
-            settings_path = db.DB_DIR / "settings.json"
-            payload = {
-                "geometry": self.winfo_geometry(),
-                "fullscreen": bool(self.attributes('-fullscreen')),
-                "theme": self.theme_name,
+            data = self._read_settings_file()
+            data.update(
+                {
+                    "geometry": self.winfo_geometry(),
+                    "fullscreen": bool(self.attributes('-fullscreen')),
+                    "theme": self.theme_name,
+                    "email_accounts": getattr(self, "email_accounts", []),
+                }
+            )
+            self._write_settings_file(data)
+        except Exception:
+            pass
+
+    def _save_email_account(self, account: dict, remember_password: bool) -> None:
+        """Persist a recently used email account (optionally storing password)."""
+        try:
+            # Ensure container exists
+            if not hasattr(self, "email_accounts") or not isinstance(self.email_accounts, list):
+                self.email_accounts = []
+            acct = {
+                "recipient": account.get("recipient", "").strip(),
+                "smtp_server": account.get("smtp_server", "").strip(),
+                "smtp_port": account.get("smtp_port", "").strip() or "587",
+                "smtp_user": account.get("smtp_user", "").strip(),
             }
-            settings_path.parent.mkdir(parents=True, exist_ok=True)
-            settings_path.write_text(json.dumps(payload), encoding="utf-8")
+            if remember_password:
+                acct["smtp_password"] = account.get("smtp_password", "")
+            else:
+                acct["smtp_password"] = ""
+
+            # Deduplicate by smtp_user + server + port
+            key = (acct["smtp_user"], acct["smtp_server"], acct["smtp_port"])
+            filtered: list = []
+            for item in self.email_accounts:
+                if not isinstance(item, dict):
+                    continue
+                if (item.get("smtp_user"), item.get("smtp_server"), item.get("smtp_port")) == key:
+                    continue
+                filtered.append(item)
+            # Prepend latest and cap list length
+            filtered.insert(0, acct)
+            self.email_accounts = filtered[:5]
+            self._save_window_settings()
         except Exception:
             pass
 
@@ -14226,6 +14311,7 @@ Help:
             ("Export Trial Balance (Excel)", self._export_tb),
             ("Export Financials (Excel)", self._export_fs),
             ("Export All (Excel)", self._export_all_to_excel),
+            ("Export All to Email", self._export_all_to_email),
             ("Export Documentation (PDF)", self._export_program_docs_pdf),
         ]
 
@@ -14732,15 +14818,16 @@ Help:
             messagebox.showerror("Export Error", f"Failed to export financial statements: {str(e)}")
             raise
 
-    def _export_all_to_excel(self) -> None:
+    def _export_all_to_excel(self, path: Optional[str] = None, notify: bool = True) -> Optional[str]:
         """Export Journal, Ledger, Trial Balance, and Financial Statements into one Excel workbook."""
-        path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel", "*.xlsx")],
-            initialfile=f"techfix_export_{datetime.now().date().isoformat()}.xlsx",
-        )
+        if path is None:
+            path = filedialog.asksaveasfilename(
+                defaultextension=".xlsx",
+                filetypes=[("Excel", "*.xlsx")],
+                initialfile=f"techfix_export_{datetime.now().date().isoformat()}.xlsx",
+            )
         if not path:
-            return
+            return None
 
         try:
             try:
@@ -15122,11 +15209,337 @@ Help:
 
             # Save workbook
             wb.save(path)
-            messagebox.showinfo("Export Successful", f"All data exported to {path}")
+            if notify:
+                messagebox.showinfo("Export Successful", f"All data exported to {path}")
 
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export all data: {str(e)}")
             raise
+        
+        return path
+
+    def _export_all_to_email(self) -> None:
+        """Export all reports to Excel and send as an email attachment."""
+        # Allow fully automatic mode via environment variables; otherwise show a nicer dialog.
+        # Default sender is empty (no placeholder). If TECHFIX_SMTP_USER is set, use it,
+        # and optionally apply suffix for plus-addressing.
+        default_from = os.environ.get("TECHFIX_SMTP_USER", "").strip()
+        suffix = os.environ.get("TECHFIX_EMAIL_SUFFIX", "").strip()
+        if suffix and default_from:
+            local, at, domain = default_from.partition("@")
+            default_from = f"{local}+{suffix}{at}{domain}"
+
+        last_account = None
+        if hasattr(self, "email_accounts") and self.email_accounts:
+            if isinstance(self.email_accounts[0], dict):
+                last_account = self.email_accounts[0]
+
+        env_values = {
+            "recipient": os.environ.get("TECHFIX_EMAIL_TO", ""),
+            "smtp_server": os.environ.get("TECHFIX_SMTP_SERVER", ""),
+            "smtp_port": os.environ.get("TECHFIX_SMTP_PORT", ""),
+            "smtp_user": os.environ.get("TECHFIX_SMTP_USER", ""),
+            "smtp_password": os.environ.get("TECHFIX_SMTP_PASS", ""),
+        }
+
+        # Defaults for dialog: prefer env if set, otherwise last saved, otherwise fallback.
+        dialog_defaults = {
+            "recipient": env_values["recipient"] or (last_account or {}).get("recipient", ""),
+            "smtp_server": env_values["smtp_server"] or (last_account or {}).get("smtp_server", "smtp.gmail.com"),
+            "smtp_port": env_values["smtp_port"] or (last_account or {}).get("smtp_port", "587"),
+            "smtp_user": env_values["smtp_user"] or (last_account or {}).get("smtp_user", default_from),
+            "smtp_password": env_values["smtp_password"] or (last_account or {}).get("smtp_password", ""),
+        }
+
+        # If all env vars are provided, skip dialog; otherwise allow picking saved accounts.
+        if all(env_values.values()):
+            recipient = env_values["recipient"]
+            smtp_server = env_values["smtp_server"]
+            smtp_port = env_values["smtp_port"]
+            smtp_user = env_values["smtp_user"]
+            smtp_password = env_values["smtp_password"]
+        else:
+            config = self._prompt_email_settings(dialog_defaults)
+            if not config:
+                return
+            recipient = config["recipient"]
+            smtp_server = config["smtp_server"]
+            smtp_port = config["smtp_port"]
+            smtp_user = config["smtp_user"]
+            smtp_password = config["smtp_password"]
+
+        temp_path = None
+        try:
+            # Create a temporary Excel export without showing a save dialog
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                temp_path = tmp.name
+            
+            exported_path = self._export_all_to_excel(path=temp_path, notify=False)
+            if not exported_path or not Path(exported_path).exists():
+                raise RuntimeError("Failed to generate export file.")
+
+            # Compose the email with attachment
+            msg = EmailMessage()
+            msg["Subject"] = f"TechFix Export - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            msg["From"] = smtp_user
+            msg["To"] = recipient
+
+            plain_body = (
+                "Hello,\n\n"
+                "Your TechFix full export is attached (journal, ledger, trial balance, financial statements).\n"
+                "If you have questions, reply to this email.\n\n"
+                "Thanks,\nTechFix"
+            )
+            html_body = f"""
+            <html>
+              <body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; background: #f8fafc; padding: 16px;">
+                <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px;">
+                  <h2 style="margin: 0 0 12px 0; color: #2563eb;">TechFix Export</h2>
+                  <p style="margin: 0 0 12px 0;">Your full export is attached:</p>
+                  <ul style="margin: 0 0 12px 18px; padding: 0; color: #374151;">
+                    <li>Journal</li>
+                    <li>Ledger</li>
+                    <li>Trial Balance</li>
+                    <li>Financial Statements</li>
+                  </ul>
+                  <p style="margin: 0 0 12px 0; color: #4b5563;">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+                  <p style="margin: 0; color: #111827;">Thanks,<br/>TechFix</p>
+                </div>
+              </body>
+            </html>
+            """
+            msg.set_content(plain_body)
+            msg.add_alternative(html_body, subtype="html")
+
+            with open(exported_path, "rb") as f:
+                data = f.read()
+            filename = Path(exported_path).name
+            msg.add_attachment(
+                data,
+                maintype="application",
+                subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename=filename,
+            )
+
+            with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+
+            messagebox.showinfo("Email Sent", f"Export emailed to {recipient}.")
+        except Exception as e:
+            messagebox.showerror("Email Error", f"Failed to email export: {e}")
+        finally:
+            if temp_path:
+                try:
+                    Path(temp_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    def _prompt_email_settings(self, defaults: dict) -> Optional[dict]:
+        """Display a styled, single-form dialog to collect email settings."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Send Export via Email")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        # Close on Esc
+        dialog.bind("<Escape>", lambda *_: dialog.destroy())
+
+        container = ttk.Frame(dialog, padding=12, style="Techfix.Surface.TFrame")
+        container.grid(row=0, column=0, sticky="nsew")
+
+        saved_accounts = [
+            acct for acct in getattr(self, "email_accounts", [])
+            if isinstance(acct, dict) and acct.get("smtp_user")
+        ]
+        saved_labels = [acct.get("smtp_user", "") for acct in saved_accounts]
+        saved_lookup = {label: acct for label, acct in zip(saved_labels, saved_accounts)}
+
+        saved_email_frame = ttk.Frame(container, style="Techfix.Surface.TFrame")
+        saved_email_frame.grid(row=0, column=0, sticky="ew", pady=(0,8))
+        saved_email_frame.columnconfigure(0, weight=1)
+        
+        ttk.Label(saved_email_frame, text="Saved Emails", style="Techfix.TLabel").grid(row=0, column=0, sticky="w", pady=(0,4))
+        saved_var = tk.StringVar(value=saved_labels[0] if saved_labels else "")
+        saved_combo = ttk.Combobox(
+            saved_email_frame,
+            textvariable=saved_var,
+            values=saved_labels,
+            width=30,
+            state="readonly" if saved_labels else "disabled",
+            style="Techfix.TEntry"
+        )
+        saved_combo.grid(row=1, column=0, sticky="ew", padx=(0,6))
+        
+        def delete_selected_email():
+            selected_label = saved_var.get().strip()
+            if not selected_label or not messagebox.askyesno(
+                "Delete Email",
+                f"Delete saved email account '{selected_label}'?",
+                parent=dialog
+            ):
+                return
+            
+            # Remove from accounts list
+            if hasattr(self, "email_accounts") and isinstance(self.email_accounts, list):
+                self.email_accounts = [
+                    acct for acct in self.email_accounts
+                    if isinstance(acct, dict) and acct.get("smtp_user", "") != selected_label
+                ]
+                self._save_window_settings()
+            
+            # Refresh the combobox
+            updated_accounts = [
+                acct for acct in getattr(self, "email_accounts", [])
+                if isinstance(acct, dict) and acct.get("smtp_user")
+            ]
+            updated_labels = [acct.get("smtp_user", "") for acct in updated_accounts]
+            saved_lookup.clear()
+            saved_lookup.update({label: acct for label, acct in zip(updated_labels, updated_accounts)})
+            
+            saved_combo['values'] = updated_labels
+            if updated_labels:
+                saved_var.set(updated_labels[0])
+                saved_combo.config(state="readonly")
+                delete_btn.config(state="normal")
+                apply_saved_account(updated_labels[0])
+            else:
+                saved_var.set("")
+                saved_combo.config(state="disabled")
+                delete_btn.config(state="disabled")
+                # Clear form fields
+                recipient_var.set("")
+                server_var.set("smtp.gmail.com")
+                port_var.set("587")
+                user_var.set("")
+                pass_var.set("")
+                remember_var.set(False)
+                user_manually_edited[0] = False
+        
+        delete_btn = ttk.Button(
+            saved_email_frame,
+            text="Delete",
+            command=delete_selected_email,
+            style="Techfix.Tertiary.TButton",
+            state="normal" if saved_labels else "disabled"
+        )
+        delete_btn.grid(row=1, column=1, sticky="e")
+
+        ttk.Label(container, text="Recipient Email", style="Techfix.TLabel").grid(row=2, column=0, sticky="w", pady=(0,4))
+        recipient_var = tk.StringVar(value=defaults.get("recipient",""))
+        recipient_entry = ttk.Entry(container, textvariable=recipient_var, width=36, style="Techfix.TEntry")
+        recipient_entry.grid(row=3, column=0, sticky="ew", pady=(0,8))
+
+        ttk.Label(container, text="SMTP Server", style="Techfix.TLabel").grid(row=4, column=0, sticky="w", pady=(0,4))
+        server_var = tk.StringVar(value=defaults.get("smtp_server","smtp.gmail.com"))
+        ttk.Entry(container, textvariable=server_var, width=36, style="Techfix.TEntry").grid(row=5, column=0, sticky="ew", pady=(0,8))
+
+        ttk.Label(container, text="Port", style="Techfix.TLabel").grid(row=6, column=0, sticky="w", pady=(0,4))
+        port_var = tk.StringVar(value=defaults.get("smtp_port","587"))
+        ttk.Entry(container, textvariable=port_var, width=10, style="Techfix.TEntry").grid(row=7, column=0, sticky="w", pady=(0,8))
+
+        ttk.Label(container, text="Username", style="Techfix.TLabel").grid(row=8, column=0, sticky="w", pady=(0,4))
+        user_var = tk.StringVar(value=defaults.get("smtp_user","") or defaults.get("recipient",""))
+        user_entry = ttk.Entry(container, textvariable=user_var, width=36, style="Techfix.TEntry")
+        user_entry.grid(row=9, column=0, sticky="ew", pady=(0,8))
+        
+        # Track if user manually edited username to avoid overwriting
+        user_manually_edited = [False]
+        loading_saved_account = [False]
+        
+        def on_user_focus_in(event):
+            user_manually_edited[0] = True
+        
+        def on_recipient_change(*args):
+            # Skip auto-fill when loading saved account or if user manually edited username
+            if loading_saved_account[0] or user_manually_edited[0]:
+                return
+            recipient_val = recipient_var.get().strip()
+            if recipient_val:
+                user_var.set(recipient_val)
+        
+        user_entry.bind("<FocusIn>", on_user_focus_in)
+        recipient_var.trace_add("write", on_recipient_change)
+
+        ttk.Label(container, text="Password", style="Techfix.TLabel").grid(row=10, column=0, sticky="w", pady=(0,4))
+        pass_var = tk.StringVar(value=defaults.get("smtp_password",""))
+        ttk.Entry(container, textvariable=pass_var, width=36, show="*", style="Techfix.TEntry").grid(row=11, column=0, sticky="ew", pady=(0,8))
+
+        remember_var = tk.BooleanVar(value=bool(defaults.get("smtp_password")))
+        ttk.Checkbutton(
+            container,
+            text="Remember password",
+            variable=remember_var,
+            style="Techfix.TCheckbutton"
+        ).grid(row=12, column=0, sticky="w", pady=(0,8))
+
+        status_var = tk.StringVar(value="")
+        ttk.Label(container, textvariable=status_var, style="Techfix.AppBar.TLabel", foreground=self.palette.get("text_secondary", "#4b5563")).grid(row=13, column=0, sticky="w", pady=(0,8))
+
+        btns = ttk.Frame(container, style="Techfix.Surface.TFrame")
+        btns.grid(row=14, column=0, sticky="e")
+
+        result: dict | None = None
+
+        def apply_saved_account(label: str) -> None:
+            acct = saved_lookup.get(label)
+            if not acct:
+                return
+            loading_saved_account[0] = True  # Disable auto-fill while loading
+            user_manually_edited[0] = False  # Reset flag when loading saved account
+            recipient_var.set(acct.get("recipient", ""))
+            server_var.set(acct.get("smtp_server", "smtp.gmail.com"))
+            port_var.set(acct.get("smtp_port", "587"))
+            user_var.set(acct.get("smtp_user", ""))
+            pwd = acct.get("smtp_password", "")
+            pass_var.set(pwd)
+            remember_var.set(bool(pwd))
+            loading_saved_account[0] = False  # Re-enable auto-fill after loading
+
+        if saved_labels:
+            apply_saved_account(saved_labels[0])
+            saved_combo.bind("<<ComboboxSelected>>", lambda *_: apply_saved_account(saved_var.get()))
+
+        def submit() -> None:
+            nonlocal result
+            rec = recipient_var.get().strip()
+            svr = server_var.get().strip()
+            prt = port_var.get().strip() or "587"
+            usr = user_var.get().strip()
+            pwd = pass_var.get()
+            if not rec:
+                status_var.set("Recipient is required.")
+                return
+            if not svr:
+                status_var.set("SMTP server is required.")
+                return
+            if not usr:
+                status_var.set("Username is required.")
+                return
+            if not pwd:
+                status_var.set("Password is required.")
+                return
+            result = {
+                "recipient": rec,
+                "smtp_server": svr,
+                "smtp_port": prt,
+                "smtp_user": usr,
+                "smtp_password": pwd,
+            }
+            # Save recent account (optional password)
+            self._save_email_account(result, remember_var.get())
+            dialog.destroy()
+
+        ttk.Button(btns, text="Send", command=submit, style="Techfix.TButton").grid(row=0, column=0, padx=(0,6))
+        ttk.Button(btns, text="Cancel", command=dialog.destroy, style="Techfix.Tertiary.TButton").grid(row=0, column=1)
+
+        dialog.columnconfigure(0, weight=1)
+        container.columnconfigure(0, weight=1)
+        recipient_var.set(recipient_var.get())  # ensure var binding
+        dialog.wait_window()
+        return result
 
     def _export_program_docs_pdf(self) -> None:
         """Generate a PDF with program documentation (overview, usage, modules)."""

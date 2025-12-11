@@ -1,1 +1,14 @@
-{"geometry": "1920x1009+-8+-8", "fullscreen": false, "theme": "Light"}
+{
+  "geometry": "1920x1009+-8+-8",
+  "fullscreen": false,
+  "theme": "Light",
+  "email_accounts": [
+    {
+      "recipient": "macapayag.nerick6@gmail.com",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": "587",
+      "smtp_user": "macapayag.nerick6@gmail.com",
+      "smtp_password": "plzc ieuu jnbj jvqj"
+    }
+  ]
+}
