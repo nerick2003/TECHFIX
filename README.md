@@ -10,20 +10,30 @@ TechFix is designed as a desktop accounting practice application that provides:
 - Financial statement generation (Income Statement, Balance Sheet, Cash Flow)
 - Source document scanning and management
 - Export capabilities (Excel, CSV, PDF)
+- User authentication and security
+- Data backup and restore
 - Responsive UI for different screen sizes
 
 ## Project Structure
 
 ```
 TECHFIX/
-├── TECHFIX/
+├── techfix/
 │   ├── main.py                 # Application entry point
 │   ├── techfix/
 │   │   ├── __init__.py
 │   │   ├── __main__.py         # CLI entry point
 │   │   ├── db.py               # Database operations and schema
 │   │   ├── accounting.py       # Accounting logic and calculations
-│   │   └── gui.py              # Tkinter GUI implementation
+│   │   ├── gui.py              # Tkinter GUI implementation
+│   │   ├── auth.py             # Authentication and security
+│   │   ├── backup.py           # Backup and restore functionality
+│   │   ├── search.py           # Search and filtering
+│   │   ├── analytics.py        # Analytics and dashboard
+│   │   ├── import_data.py      # Data import functionality
+│   │   ├── undo.py             # Undo/redo operations
+│   │   ├── validation.py       # Input validation
+│   │   └── notifications.py    # Notification system
 │   ├── tests/                  # Test suite and utilities
 │   └── docs/                   # Additional documentation
 ├── generators/                 # Mock data generation tools
@@ -113,6 +123,26 @@ The application includes the following main tabs:
 - **Document Attachments**: Attach source documents to transactions
 - **Barcode/QR Code Generation**: Generate barcodes and QR codes for documents
 
+### Security & Authentication
+
+- **User Authentication**: Login system with password protection
+- **Password Management**: Secure password hashing (bcrypt when available)
+- **Session Management**: Automatic session timeout (8-hour default)
+- **Data Encryption**: Optional encryption support for sensitive data
+
+### Data Management
+
+- **Backup & Restore**: Create and restore database backups
+- **Data Import**: Import transactions from Excel (.xlsx, .xls) and CSV files
+- **Undo/Redo**: Undo and redo operations for data entry
+- **Search & Filter**: Global search across all data with advanced filtering
+
+### Analytics & Reporting
+
+- **Dashboard**: View key financial metrics and overview
+- **Financial Metrics**: Real-time calculation of key performance indicators
+- **Audit Log**: Track accounting cycle status and changes
+
 ### Export Capabilities
 
 - **Excel Export**: Export transactions, trial balances, and financial statements to Excel
@@ -133,7 +163,7 @@ The application includes the following main tabs:
 
 1. **Navigate to the project directory:**
    ```powershell
-   cd "C:\Users\neric\Desktop\FINAL REVISION MAYBE\TECHFIX"
+   cd "C:\Users\neric\Desktop\TECHFIX"
    ```
 
 2. **Create a virtual environment (recommended):**
@@ -166,7 +196,17 @@ The application includes the following main tabs:
    - **openpyxl** (≥3.1.0) - Excel export
    - **reportlab** (≥4.0.0) - PDF generation
 
-5. **Verify installation (optional):**
+5. **Install optional dependencies (recommended for enhanced security):**
+   ```powershell
+   pip install bcrypt cryptography pandas
+   ```
+   
+   Optional packages:
+   - **bcrypt** (≥4.0.0) - Enhanced password hashing
+   - **cryptography** (≥41.0.0) - Data encryption support
+   - **pandas** (≥2.0.0) - Required for data import feature
+
+6. **Verify installation (optional):**
    ```powershell
    pip list
    ```
@@ -181,31 +221,42 @@ The application includes the following main tabs:
 
 2. **Start the app:**
    ```powershell
-   python TECHFIX\main.py
+   python techfix\main.py
    ```
    
-   Or from the project root:
+   Or use the package entry point (after installation):
    ```powershell
-   python TECHFIX\TECHFIX\main.py
+   techfix
    ```
 
 3. **Optional:** Set data directory via environment variable `TECHFIX_DATA_DIR` to change where `techfix.sqlite3` is stored:
    ```powershell
    $env:TECHFIX_DATA_DIR="C:\path\to\your\data"
-   python TECHFIX\main.py
+   python techfix\main.py
    ```
    
    On Linux/macOS:
    ```bash
    export TECHFIX_DATA_DIR="/path/to/your/data"
-   python TECHFIX/main.py
+   python techfix/main.py
    ```
+
+4. **First Launch:**
+   - Default admin credentials: username `admin`, password `admin`
+   - You will be prompted to change the password on first login
+   - The application will automatically create the database and seed initial data
 
 ## Testing
 
 Run the test suite:
 ```powershell
-python -m unittest discover -s TECHFIX\TECHFIX\tests -p "test_*.py" -v
+python -m unittest discover -s techfix\tests -p "test_*.py" -v
+```
+
+Or run individual test files:
+```powershell
+python techfix\tests\test_accounting_cycle.py
+python techfix\tests\test_techfix.py
 ```
 
 ## Mock Data Generation
@@ -219,24 +270,52 @@ See `generators/GENERATOR_README.md` for detailed usage instructions.
 
 ## Important Notes
 
-- **First Launch**: The application automatically seeds a chart of accounts and creates a default accounting period if none exists
-- **Data Storage**: By default, `techfix.sqlite3` is stored in the project root. Use `TECHFIX_DATA_DIR` environment variable to change the location
-- **Preferences**: Window size and theme preferences are saved and restored on next launch
-- **Export Paths**: Excel and CSV exports write to the chosen output path, creating parent folders as needed
-- **Balance Validation**: The Balance Sheet includes automatic balance validation (should equal ₱0.00)
-- **Entry Status**: Only posted entries appear in financial statements. Use "Record & Post" instead of "Save Draft" for entries to be included
+- **First Launch**: 
+  - Default admin credentials: username `admin`, password `admin`
+  - The application automatically seeds a chart of accounts and creates a default accounting period if none exists
+  - You will be prompted to change the password on first login
+  
+- **Data Storage**: 
+  - By default, `techfix.sqlite3` is stored in the project root
+  - Use `TECHFIX_DATA_DIR` environment variable to change the location
+  - Backups are stored in `backups/` directory relative to the database location
+  
+- **Preferences**: 
+  - Window size and theme preferences are saved and restored on next launch
+  - Session timeout is set to 8 hours by default
+  
+- **Export Paths**: 
+  - Excel and CSV exports write to the chosen output path, creating parent folders as needed
+  - PDF exports are generated on-demand
+  
+- **Balance Validation**: 
+  - The Balance Sheet includes automatic balance validation (should equal ₱0.00)
+  - All double-entry transactions are validated before posting
+  
+- **Entry Status**: 
+  - Only posted entries appear in financial statements
+  - Use "Record & Post" instead of "Save Draft" for entries to be included in reports
+  - Draft entries can be edited before posting
 
 ## Keyboard Shortcuts
 
 - **F11**: Toggle fullscreen mode
 - **Escape**: Exit fullscreen mode
+- **Ctrl+Z**: Undo last operation
+- **Ctrl+Y**: Redo operation
+- **Ctrl+F**: Open search dialog
+- **Ctrl+D**: Open dashboard
+- **Ctrl+I**: Import data
+- **Ctrl+1-0**: Navigate to tabs (1-10)
 
 ## Documentation
 
-- **User Guide**: See `TECHFIX/TECHFIX/tests/USER_GUIDE.md` for detailed usage instructions
-- **Quick Start**: See `TECHFIX/TECHFIX/tests/QUICK_START_GUIDE.md` for a 5-minute getting started guide
+- **User Guide**: See `techfix/tests/USER_GUIDE.md` for detailed usage instructions
+- **Quick Start**: See `techfix/tests/QUICK_START_GUIDE.md` for a 5-minute getting started guide
+- **Features Access**: See `techfix/ISSUES AND FIXES/FEATURES_ACCESS.md` for how to access each feature
 - **Export Documentation**: Use the Export tab → "Export Documentation (PDF)" to generate a program overview PDF
-- **Accounting Cycle**: The application implements all 10 steps of the standard accounting cycle (see `TECHFIX/TECHFIX/ISSUES AND FIXES/ACCOUNTING_CYCLE_AUDIT.md`)
+- **Accounting Cycle**: The application implements all 10 steps of the standard accounting cycle (see `techfix/ISSUES AND FIXES/ACCOUNTING_CYCLE_AUDIT.md`)
+- **Reversing Schedule**: See `techfix/docs/reversing_schedule.md` for information about reversing entries
 
 ## Package Installation
 
@@ -248,14 +327,51 @@ techfix
 
 This uses the CLI entry point defined in `techfix.__main__`.
 
+## Troubleshooting
+
+### Common Issues
+
+1. **Database locked error**: Close all instances of the application and try again
+2. **Import fails**: Ensure pandas is installed: `pip install pandas`
+3. **Scanning not working**: Verify opencv-python and pyzbar are installed correctly
+4. **Password reset**: Use `python techfix/techfix/reset_admin.py` to reset admin password
+
+### Getting Help
+
+- Check the **User Guide** (`techfix/tests/USER_GUIDE.md`) for detailed instructions
+- Review the **Quick Start Guide** (`techfix/tests/QUICK_START_GUIDE.md`) for common workflows
+- See troubleshooting documentation in `techfix/ISSUES AND FIXES/` directory
+
+## Development
+
+### Project Status
+
+- ✅ All 10 accounting cycle steps implemented
+- ✅ Complete double-entry bookkeeping system
+- ✅ Financial statement generation
+- ✅ User authentication and security
+- ✅ Data backup and restore
+- ✅ Export capabilities (Excel, CSV, PDF)
+- ✅ Document scanning and management
+- ✅ Search and filtering
+- ✅ Undo/redo functionality
+
+### Contributing
+
+When contributing to this project:
+1. Follow the existing code style
+2. Add type hints to new functions
+3. Update tests for new features
+4. Update documentation as needed
+
 ## Next Steps / Future Improvements
 
-- Add `.gitignore` for `*.sqlite3`, `__pycache__/`, and local artifacts
-- Continue adding type hints across modules and enable static type checking
-- Enhanced error handling and user feedback
-- Additional export formats
-- Multi-user support
+- Enhanced multi-user support with role-based access
 - Cloud backup integration
+- Additional export formats (JSON, XML)
+- Advanced reporting and analytics
+- Mobile companion app
+- API for third-party integrations
 
 ## License
 
